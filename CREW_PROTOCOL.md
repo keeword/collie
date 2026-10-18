@@ -3279,6 +3279,26 @@ Three things stay exactly as they are, and naming them is the whole of the decis
   factor is unchanged: the crew secret rides every frame, and the member's own admission checks it
   per frame exactly as it checks it per request today.
 
+### 21.2 The door
+
+The lead binds a **second listener** for the uplink, and only when `COLLIE_CREW_UPLINK_PORT` is set.
+Absent, nothing is bound: the feature is off and §11's solo contract is untouched. The posture is the
+standby door's (ADR 0028):
+
+- **Its own `Bun.serve`, its own port, loopback by default** (`COLLIE_CREW_UPLINK_HOST`). It never
+  rides the front door's `fetch` — a member connection is not a browser request, and the front door
+  does not upgrade WebSockets.
+- **TLS ends at the operator's proxy.** The door speaks plain HTTP on loopback; the proxy terminates
+  `wss://` on 443 and forwards `/crew/v1/uplink` to the door **without stripping the path**.
+- **No timer of ours watches it.** `idleTimeout` closes a socket that goes quiet (three missed
+  heartbeats, §21.7), and the member's own `ping` frames are what keeps a live socket open.
+
+A connection is one of two things, decided by the `Authorization` header before the upgrade. A bearer
+token whose hash matches an enrolled uplink member's `uplinkTokenHash` is that member, and the match
+is made in constant time over the whole roster. Anything else presented as a token is the uniform
+`401 {"error":"unauthorized"}`, naming nothing. No token at all is an enrollment connection (§21.5),
+which has five seconds to send its `enroll` frame and is closed after the answer.
+
 ### 21.3 The frames
 
 One JSON object per WebSocket **text** frame, discriminated by `kind`

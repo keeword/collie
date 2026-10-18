@@ -142,6 +142,7 @@ import {
   warrantNamesSelf,
   type StandbyFacts,
 } from "./crew/standby.ts";
+import { createUplinkDoor, uplinkHostOf, uplinkPortOf } from "./crew/uplink-door.ts";
 import {
   collidingLabels,
   collisionReportOf,
@@ -2023,6 +2024,28 @@ const crewLead = (() => {
 })();
 
 /**
+ * The uplink door (CREW_PROTOCOL.md §21.2): where members that cannot be dialled dial US instead.
+ * Its own listener, loopback by default, TLS terminated by the operator's proxy. Absent
+ * `COLLIE_CREW_UPLINK_PORT` — or a collie that leads nobody — binds nothing, which is the whole
+ * feature switched off and the solo zero-tax contract unchanged.
+ */
+const uplinkDoor = (() => {
+  if (crew.mode !== "lead") return null;
+  const port = uplinkPortOf(process.env);
+  if (port === null || trustStore.current() === null) return null;
+  const host = uplinkHostOf(process.env);
+  const door = createUplinkDoor({
+    store: trustStore,
+    audit,
+    host,
+    port,
+    maxUploadBytes: cfg.maxUploadBytes,
+  });
+  console.log(`[crew] uplink door listening on http://${host}:${door.port}`);
+  return door;
+})();
+
+/**
  * `GET /api/crew`'s body, asked for per request and answered from memory (bridge/crew/status-wire.ts).
  *
  * `undefined` unless this process leads a crew, which is the route's 404 for a solo instance and for
@@ -2532,6 +2555,7 @@ const shutdown = async () => {
   // Stop accepting new connections and let in-flight requests drain briefly (non-forced stop)
   // before we tear down the poll loops and exit.
   await server.stop();
+  await uplinkDoor?.stop();
   // The CLI's read credential dies with the process that holds its hash (bridge/local-secret.ts).
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);

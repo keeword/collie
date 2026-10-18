@@ -326,7 +326,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: DEFAULT_MUX,
-    doc: "Which multiplexer this collie mirrors: herdr, tern, tmux, zellij, tuios or durable — or none, for a collie that fronts no multiplexer (a lead whose machines all dial in).",
+    doc: "Which multiplexer this collie mirrors: herdr, tern, tmux, zellij, tuios, durable, or none. none fronts no multiplexer, which is what a lead needs when every machine dials in.",
     configField: "mux",
   },
   {
@@ -682,6 +682,23 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     kind: "bool",
     default: false,
     doc: "Keep this peer's own browser front door up. Peer mode only.",
+  },
+  {
+    key: "crew_uplink_port",
+    env: "COLLIE_CREW_UPLINK_PORT",
+    section: "crew",
+    kind: "int",
+    default: 0,
+    min: 1,
+    doc: "The port of the uplink door, where members that cannot be dialled dial in. Unset binds nothing.",
+  },
+  {
+    key: "crew_uplink_host",
+    env: "COLLIE_CREW_UPLINK_HOST",
+    section: "crew",
+    kind: "string",
+    default: "127.0.0.1",
+    doc: "The address the uplink door binds. Loopback by default; your proxy forwards the public 443 to it.",
   },
 
   // ── standby ────────────────────────────────────────────────────────────────
