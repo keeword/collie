@@ -7,6 +7,7 @@ import type { AuditLog } from "../bridge/audit.ts";
 import { HOST, type Host } from "../bridge/host.ts";
 import {
   acceptEnrollment,
+  acceptUplinkEnrollment,
   approvePromotion,
   cancelPromotion,
   commitCrewChange,
@@ -31,8 +32,10 @@ import {
   CREW_PROTOCOL_VERSION,
 } from "../bridge/crew/enrollment.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
-import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } from "../bridge/crew/identity.ts";
-import { signDial, signRequest } from "../bridge/crew/signing.ts";
+import { fingerprintOfCert, hashToken, mintMemberId, normalizeFingerprint, randomToken, type RandomSource } from "../bridge/crew/identity.ts";
+import { signDial, signRequest, verifyUplinkEnrollment } from "../bridge/crew/signing.ts";
+import { encodeUplinkFrame, parseUplinkFrame, type UplinkFrame } from "../bridge/crew/uplink-frames.ts";
+import { UPLINK_PATH } from "../bridge/crew/uplink-door.ts";
 import { dialTls } from "../bridge/crew/transport.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
 import { crewOpsPath, CrewOpsStore, type OpsRecord } from "../bridge/crew/ops-store.ts";
@@ -612,14 +615,15 @@ async function clearOwnHerdTags(deps: CrewDeps): Promise<void> {
 // ── Windows runs alone (M43) ─────────────────────────────────────────────────
 
 /**
- * Why the verbs that form a crew or change who leads it refuse on Windows: `crew invite`, `crew join`
- * (and `collie join`), `crew add`, `crew deputy`, `crew approve-promote` and `collie promote`. They
- * put this machine into a crew, take a member in, or hand the lead to someone; nothing about a crew
- * was checked on Windows in this release. The verbs that read or leave a crew stay open, so a store
- * carried over can still be inspected and dropped.
+ * Why the verbs that form a crew or change who leads it refuse on Windows: `crew invite`, `crew add`,
+ * `crew deputy`, `crew approve-promote` and `collie promote`. They put this machine into a crew as its
+ * lead, take a member in, or hand the lead to someone. `collie join` is the exception, and only for an
+ * uplink door (CREW_PROTOCOL.md §21): the member dials out and opens nothing, so a Windows machine may
+ * join that way. The verbs that read or leave a crew stay open, so a store carried over can still be
+ * inspected and dropped.
  */
 export const WINDOWS_CREW_SENTENCE =
-  "On Windows, Collie runs on one machine only: a Windows machine cannot join, lead or change a crew in this release, and nothing was changed. See docs/windows.md.";
+  "On Windows, Collie cannot lead or change a crew in this release, and nothing was changed. It can join a crew over an uplink door: `collie join wss://<lead>/crew/v1/uplink`. See docs/windows.md.";
 
 /**
  * The second line of the "this collie is in no crew" block, which `crew status` and `doctor` both
@@ -628,7 +632,7 @@ export const WINDOWS_CREW_SENTENCE =
  */
 export function soloCrewHint(host: Host): string {
   return host.platform === "win32"
-    ? "  A Windows machine cannot join or lead a crew in this release."
+    ? "  A Windows machine cannot lead a crew. It can join one: `collie join wss://<lead>/crew/v1/uplink`."
     : "  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.";
 }
 
@@ -653,7 +657,7 @@ export function refuseCrewOnWindows(deps: Pick<CrewDeps, "host" | "io">): boolea
  */
 export async function cmdCrewInvite(deps: CrewDeps, args: readonly string[]): Promise<number> {
   if (refuseCrewOnWindows(deps)) return EXIT.FAIL;
-  const { flags } = parseCrewArgs(args);
+  const { flags, bare } = parseCrewArgs(args, ["uplink"]);
   const data = await ensureStore(deps, flags.as);
   if (data === null) return EXIT.FAIL;
   if (data.lead !== null) {
@@ -668,6 +672,7 @@ export async function cmdCrewInvite(deps: CrewDeps, args: readonly string[]): Pr
           label: flags.label ?? null,
           crewName: flags.name,
           random: deps.random,
+          transport: bare.has("uplink") ? "uplink" : undefined,
         }),
   );
   if (minted === null) return EXIT.FAIL;
@@ -686,6 +691,13 @@ export async function cmdCrewInvite(deps: CrewDeps, args: readonly string[]): Pr
   deps.io.out(`  single-use · expires ${new Date(minted.expiresAt).toISOString()} (10 minutes)`);
   deps.io.out("  Shown once — only its hash is stored. Run this on the machine that is joining:");
   const host = target ?? "<this-lead-address>";
+  if (bare.has("uplink")) {
+    // The member dials US, so the address is the public door rather than a host:port the lead dials.
+    deps.io.out(`    collie join wss://${host}${UPLINK_PATH}`);
+    deps.io.out("  The joining machine needs no open port: it connects outward and stays connected.");
+    await applyLocally(deps, "the freshly minted invite");
+    return EXIT.OK;
+  }
   // The short form first, because it is the one a person types: `join` asks for the token at a
   // prompt when none is given, so nothing else has to be remembered. The stdin form stays right
   // underneath it — it is what a script uses, and it is still the only form that takes no keystrokes.
@@ -845,8 +857,165 @@ function refusePlaintext(deps: CrewDeps): void {
  * answer an operator cannot act on: already in a crew is `3`, a refused token is `4`, an address that
  * did not answer is `5`.
  */
+/** How long an uplink enrollment waits for the lead's signed answer before giving up. */
+const UPLINK_JOIN_TIMEOUT_MS = 10_000;
+
+/** Resolve an enrollment promise exactly once. Its own function, so the promise has one settling call. */
+function resolveOnce<T>(state: { settled: boolean }, resolve: (value: T) => void, value: T): void {
+  if (state.settled) return;
+  state.settled = true;
+  resolve(value);
+}
+
+/** An address the uplink door answers: `wss://`, or `ws://` which is judged loopback below. */
+function isUplinkUrl(address: string): boolean {
+  return /^wss?:\/\//iu.test(address);
+}
+
+/** The origin a member is known by, derived from the door URL it dials: `wss://` becomes `https://`. */
+function uplinkOrigin(url: URL): string {
+  const scheme = url.protocol === "wss:" ? "https:" : "http:";
+  return `${scheme}//${url.host}`;
+}
+
+/**
+ * Join a crew by dialing the lead's uplink door (CREW_PROTOCOL.md §21.5). The member opens no port
+ * and is never dialled, which is why this is the one crew verb a Windows machine may run.
+ */
+async function joinOverUplink(
+  deps: CrewDeps,
+  address: string,
+  tokenArg: string | undefined,
+  labelFlag: string | undefined,
+): Promise<number> {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    deps.io.err(`error: "${address}" is not a valid uplink door URL.`);
+    return EXIT.USAGE;
+  }
+  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+  if (url.protocol === "ws:" && !loopback) {
+    deps.io.err("error: an uplink join needs wss://. ws:// is only for localhost,");
+    deps.io.err("       because the token would otherwise cross the network unencrypted.");
+    return EXIT.REFUSED;
+  }
+  if (url.pathname !== UPLINK_PATH) {
+    deps.io.err(`error: the uplink door answers at ${UPLINK_PATH}, not "${url.pathname}".`);
+    return EXIT.USAGE;
+  }
+
+  const existing = await deps.store.load();
+  if (existing !== null && existing.crew !== null) {
+    const role = existing.lead === null ? `lead of ${existing.peers.length} peer(s)` : `peer of "${existing.lead.memberId}"`;
+    deps.io.err(`error: already in crew "${existing.crew.name}" as ${role} (member "${existing.self.memberId}").`);
+    deps.io.err("       Run `collie crew leave` here first — joining a second crew is not a thing (§3).");
+    return EXIT.STATE;
+  }
+
+  const raw = await resolveToken(deps, address, tokenArg);
+  if (raw === null) return EXIT.USAGE;
+  const dot = raw.lastIndexOf(".");
+  if (dot <= 0 || dot === raw.length - 1) {
+    deps.io.err("error: this invite has no lead fingerprint — mint a fresh one with `collie crew invite --uplink`.");
+    return EXIT.REFUSED;
+  }
+  const token = raw.slice(0, dot);
+  const invitedFp = normalizeFingerprint(raw.slice(dot + 1));
+  if (invitedFp === null) {
+    deps.io.err("error: the invite's lead fingerprint is malformed — a fingerprint is 64 hex characters.");
+    return EXIT.REFUSED;
+  }
+
+  const data = await ensureStore(deps, joinLabel(deps, labelFlag));
+  if (data === null) return EXIT.FAIL;
+
+  const enroll: Extract<UplinkFrame, { kind: "enroll" }> = {
+    kind: "enroll",
+    protocol: CREW_PROTOCOL_VERSION,
+    token,
+    fingerprint: data.self.fingerprint,
+    certPem: data.self.certPem,
+    address: uplinkOrigin(url),
+  };
+  const frame = await enrollOverSocket(address, labelFlag === undefined ? enroll : { ...enroll, label: labelFlag });
+  if (frame === null) {
+    deps.io.err("error: the lead's uplink door did not complete the enrollment.");
+    deps.io.err("       Check the address, and that the invite has not expired or already been used.");
+    return EXIT.FAIL;
+  }
+  if (fingerprintOfCert(frame.leadCertPem) !== invitedFp) {
+    deps.io.err("error: the lead's certificate does not match the fingerprint in the invite.");
+    deps.io.err("       The door that answered is not the lead that minted this token. Nothing was saved.");
+    return EXIT.REFUSED;
+  }
+  const verified = verifyUplinkEnrollment(frame.leadCertPem, frame.signature, {
+    tokenHash: hashToken(frame.uplinkToken),
+    timestamp: frame.signedAt,
+  });
+  if (!verified) {
+    deps.io.err("error: the lead's signature on the enrollment does not verify. Nothing was saved.");
+    return EXIT.REFUSED;
+  }
+
+  const joined = await commitCrewChange(deps.store, deps.audit, (current) =>
+    current === null
+      ? null
+      : acceptUplinkEnrollment(
+          current,
+          {
+            protocol: CREW_PROTOCOL_VERSION,
+            crewId: frame.crewId,
+            crewName: frame.crewName,
+            crewSecret: frame.secret,
+            secretGeneration: frame.secretGeneration,
+            memberId: frame.memberId,
+            leadMemberId: frame.leadMemberId,
+            leadFingerprint: frame.leadFingerprint,
+            leadCertPem: frame.leadCertPem,
+            uplinkToken: frame.uplinkToken,
+          },
+          address,
+          deps.now(),
+        ),
+  );
+  if (joined === null) return EXIT.FAIL;
+  deps.io.out(`✓ joined "${frame.crewName}" as ${frame.memberId}, dialing ${address}`);
+  deps.io.out("  The lead needs no restart. This machine reconnects on its own from now on.");
+  await applyLocally(deps, "joining the crew");
+  return EXIT.OK;
+}
+
+/** Dial the door, send the enroll frame, and return the lead's signed answer — or null. */
+function enrollOverSocket(
+  address: string,
+  enroll: Extract<UplinkFrame, { kind: "enroll" }>,
+): Promise<Extract<UplinkFrame, { kind: "enrolled" }> | null> {
+  // SAFETY: Bun's WebSocket client accepts `{ headers }` (verified on Bun 1.4.3). The DOM typing of
+  // the same global only knows subprotocols, so the constructor is narrowed to the Bun signature.
+  const Socket = WebSocket as new (url: string, opts?: Bun.WebSocketOptions) => WebSocket;
+  const ws = new Socket(address);
+  return new Promise((resolve) => {
+    const state = { settled: false };
+    const finish = (frame: Extract<UplinkFrame, { kind: "enrolled" }> | null): void => {
+      if (state.settled) return;
+      clearTimeout(timer);
+      ws.close();
+      resolveOnce(state, resolve, frame);
+    };
+    const timer = setTimeout(() => finish(null), UPLINK_JOIN_TIMEOUT_MS);
+    ws.addEventListener("open", () => ws.send(encodeUplinkFrame(enroll)));
+    ws.addEventListener("message", (ev) => {
+      const frame = parseUplinkFrame(String(ev.data));
+      finish(frame?.kind === "enrolled" ? frame : null);
+    });
+    ws.addEventListener("error", () => finish(null));
+    ws.addEventListener("close", () => finish(null));
+  });
+}
+
 export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<number> {
-  if (refuseCrewOnWindows(deps)) return EXIT.FAIL;
   const { positional, flags, bare } = parseCrewArgs(args, ["insecure"]);
   const [address, tokenArg] = positional;
   if (address === undefined) {
@@ -854,6 +1023,11 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
     deps.io.err("       Mint the token on the lead with `collie crew invite`; it is single-use and lasts 10 minutes.");
     return EXIT.USAGE;
   }
+  // An uplink join dials OUT to the lead's door (CREW_PROTOCOL.md §21.5). It is the one crew verb a
+  // Windows machine may run: the member opens nothing, so the reasons the other verbs refuse do not
+  // apply to it.
+  if (isUplinkUrl(address)) return joinOverUplink(deps, address, tokenArg, flags.label);
+  if (refuseCrewOnWindows(deps)) return EXIT.FAIL;
 
   // An operator-typed `--address` is taken verbatim (`selfAddress`), which let a portless one through:
   // the lead then dials it at :443, and whatever answers there turns the failure into a TLS sentence

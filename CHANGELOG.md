@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The lead grows an uplink door.** With `COLLIE_CREW_UPLINK_PORT` set, a lead binds a second loopback listener where members that cannot be dialled connect outward. A token admits a member, a connection with none enrolls one, and a wrong token gets the same refusal as no token. Unset, nothing is bound.
 - **The lead dials an uplink member through its open socket.** A member enrolled with `transport: "uplink"` is never dialled: its requests ride the connection it opened, and a request that cannot be framed fails before anything is sent, so the phone reads a refusal instead of an unknown outcome. A socket that dies mid-request reports the outcome as unknowable and replays nothing.
 - **An uplink member dials its lead and stays dialled.** The member connects outward with its token, reconnects on its own with capped backoff, and answers the lead's requests through the same crew handler its own listener serves, so admission is unchanged. Past four requests at once it answers busy instead of queueing, and a cancelled request is aborted.
+- **`collie crew invite --uplink` and `collie join wss://…` enroll a member that dials out.** The lead prints a `wss://` join command, and the joining machine pins the lead only after the signed enrollment answer matches the invite's fingerprint. A Windows machine can join this way, which is the one crew verb it may run; leading and the other crew verbs stay refused there.
 
 ### Changed
 

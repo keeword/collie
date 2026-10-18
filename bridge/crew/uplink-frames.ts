@@ -40,6 +40,9 @@ export type UplinkFrame =
       readonly crewName: string;
       readonly crewId: string;
       readonly secret: string;
+      /** The member id the lead minted for the joining machine. */
+      readonly memberId: string;
+      readonly secretGeneration: number;
       readonly leadMemberId: string;
       readonly leadFingerprint: string;
       readonly leadCertPem: string;
@@ -259,6 +262,8 @@ export function parseUplinkFrame(raw: string, bounds: UplinkBounds = DEFAULT_UPL
   const crewName = parsed.crewName;
   const crewId = parsed.crewId;
   const secret = parsed.secret;
+  const memberId = parsed.memberId;
+  const secretGeneration = parsed.secretGeneration;
   const leadMemberId = parsed.leadMemberId;
   const leadFingerprint = parsed.leadFingerprint;
   const leadCertPem = parsed.leadCertPem;
@@ -268,13 +273,28 @@ export function parseUplinkFrame(raw: string, bounds: UplinkBounds = DEFAULT_UPL
   if (typeof crewName !== "string" || crewName.length === 0 || crewName.length > 64) return null;
   if (typeof crewId !== "string" || crewId.length === 0 || crewId.length > 128) return null;
   if (typeof secret !== "string" || secret.length === 0 || secret.length > 512) return null;
+  if (typeof memberId !== "string" || memberId.length === 0 || memberId.length > 64) return null;
+  if (typeof secretGeneration !== "number" || !Number.isInteger(secretGeneration) || secretGeneration <= 0) return null;
   if (typeof leadMemberId !== "string" || leadMemberId.length === 0 || leadMemberId.length > 64) return null;
   if (typeof leadFingerprint !== "string" || leadFingerprint.length === 0 || leadFingerprint.length > 128) return null;
   if (typeof leadCertPem !== "string" || leadCertPem.length === 0 || leadCertPem.length > 8192) return null;
   if (typeof uplinkToken !== "string" || uplinkToken.length === 0 || uplinkToken.length > 512) return null;
   if (typeof signedAt !== "number" || !Number.isFinite(signedAt)) return null;
   if (typeof signature !== "string" || signature.length === 0 || signature.length > 512) return null;
-  return { kind, crewName, crewId, secret, leadMemberId, leadFingerprint, leadCertPem, uplinkToken, signedAt, signature };
+  return {
+    kind,
+    crewName,
+    crewId,
+    secret,
+    memberId,
+    secretGeneration,
+    leadMemberId,
+    leadFingerprint,
+    leadCertPem,
+    uplinkToken,
+    signedAt,
+    signature,
+  };
 }
 
 /** Encode one frame. The inverse of {@link parseUplinkFrame} over every frame this build sends. */

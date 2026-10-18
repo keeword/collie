@@ -3329,7 +3329,7 @@ per-request recovery from a frame the other end cannot read.
 | `hello` | member → lead | `protocol`, `member`, optional `version` — the same facts `GET /crew/v1/hello` answers |
 | `welcome` | lead → member | `member` (the lead's), `protocol`, optional `version` |
 | `enroll` | joining machine → lead | the body of `POST /crew/v1/enroll` (§8.2), plus the origin the member will be known by |
-| `enrolled` | lead → joining machine | the enrollment answer plus the long-term token, **signed** (§21.5) |
+| `enrolled` | lead → joining machine | the enrollment answer plus the long-term token, **signed** (§21.5): the crew's name, id and secret, the member id minted for the joiner, the secret generation, and the lead's identity and certificate |
 | `req` | lead → member | `id`, `method`, `path` (path and query), the §6 header set, optional base64 `body` |
 | `res` | member → lead | `id`, `status`, response headers, optional base64 `body` |
 | `cancel` | lead → member | `id` — the lead's own deadline fired (§21.7) |

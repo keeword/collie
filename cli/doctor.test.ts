@@ -2192,7 +2192,7 @@ describe("the config-file finding", () => {
     const lines = h.io.stdout;
     const at = lines.indexOf("crew: none — this collie is not in a crew.");
     expect(at).toBeGreaterThan(-1);
-    expect(lines[at + 1]).toBe("  A Windows machine cannot join or lead a crew in this release.");
+    expect(lines[at + 1]).toBe("  A Windows machine cannot lead a crew. It can join one: `collie join wss://<lead>/crew/v1/uplink`.");
     expect(lines.join("\n")).not.toContain("crew invite");
   });
 

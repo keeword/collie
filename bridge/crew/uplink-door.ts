@@ -239,6 +239,8 @@ export function createUplinkDoor(deps: UplinkDoorDeps): UplinkDoor {
       crewName: enrolled.crewName,
       crewId: enrolled.crewId,
       secret: enrolled.crewSecret,
+      memberId: enrolled.memberId,
+      secretGeneration: enrolled.secretGeneration,
       leadMemberId: enrolled.leadMemberId,
       leadFingerprint: enrolled.leadFingerprint,
       leadCertPem: enrolled.leadCertPem,

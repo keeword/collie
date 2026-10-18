@@ -357,7 +357,7 @@ function crewSubcommand(
  */
 function crewTree(): readonly Subcommand[] {
   return [
-    crewSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdCrewInvite),
+    crewSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead; --uplink for members that dial out)", cmdCrewInvite),
     crewSubcommand("join", "join a crew: `crew join <lead-address>` (run on the joining machine)", cmdJoin),
     crewSubcommand("leave", "leave the crew — drops the crew secret and every pin on this machine", (deps) =>
       cmdLeave(deps),

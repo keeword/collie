@@ -475,7 +475,7 @@ describe("on a Windows host, the verbs that form a crew refuse and change nothin
 
   test("the sentence is the one the operator reads, word for word", () => {
     expect(WINDOWS_CREW_SENTENCE).toBe(
-      "On Windows, Collie runs on one machine only: a Windows machine cannot join, lead or change a crew in this release, and nothing was changed. See docs/windows.md.",
+      "On Windows, Collie cannot lead or change a crew in this release, and nothing was changed. It can join a crew over an uplink door: `collie join wss://<lead>/crew/v1/uplink`. See docs/windows.md.",
     );
   });
 
@@ -493,10 +493,11 @@ describe("on a Windows host, the verbs that form a crew refuse and change nothin
     expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
     expect(h.io.stdout).toEqual([
       "mode: solo — this collie is not in a crew (no trust store, or an empty one).",
-      "  A Windows machine cannot join or lead a crew in this release.",
+      "  A Windows machine cannot lead a crew. It can join one: `collie join wss://<lead>/crew/v1/uplink`.",
     ]);
     expect(text(h.io)).not.toContain("crew invite");
-    expect(text(h.io)).not.toContain("collie join");
+    // `collie join wss://…` is named on purpose: joining over an uplink door is the one crew verb a
+    // Windows machine may run, so the hint points at it.
   });
 
   test("a solo crew status off Windows still names both ways in", async () => {
