@@ -170,6 +170,28 @@ export interface TrustedMember {
    * moment it becomes the only record of what is left to do.
    */
   readonly rePinPending?: boolean;
+  /**
+   * How this collie REACHES this member (CREW_PROTOCOL.md §21). `"uplink"`: the member dials out to
+   * this collie's door and {@link TrustedMember.address} is the origin it is known by, never an
+   * address that is dialled. **ABSENT means the dialable link of §8.1**, so a store from before this
+   * field existed round-trips into exactly the behaviour it had.
+   */
+  readonly transport?: "uplink";
+  /**
+   * The SHA-256 of this member's long-term uplink token, on the LEAD's copy of the member. The token
+   * itself is handed to the member once, at enrollment, and never stored here — a leaked trust store
+   * yields a hash, not a credential.
+   *
+   * **ABSENT wherever {@link TrustedMember.transport} is**: a dialable member has no token, and a
+   * member's OWN record of its lead carries the token in {@link TrustedMember.uplink} instead.
+   */
+  readonly uplinkTokenHash?: string;
+  /**
+   * How this collie DIALS its lead, on the member's own copy of the lead entry: the door's URL and the
+   * long-term token in the clear. This is the one place the token lives, in a 0600 file, because the
+   * member has to present it. Never set on a lead's roster — there the hash is the record.
+   */
+  readonly uplink?: { readonly url: string; readonly token: string };
 }
 
 /**
@@ -197,6 +219,12 @@ export interface PendingInvite {
   readonly expiresAt: number;
   /** Operator's suggested label for the joining member. A hint for id minting, never binding. */
   readonly label: string | null;
+  /**
+   * Which door may spend this invite (CREW_PROTOCOL.md §21.5). `"uplink"`: only the uplink door;
+   * **ABSENT: only `POST /crew/v1/enroll`**. The two doors refuse each other's invites, so a token
+   * minted for one path can never arrive on the other.
+   */
+  readonly transport?: "uplink";
 }
 
 /**
@@ -382,7 +410,27 @@ function isMember(value: JsonValue | undefined): value is JsonValue & TrustedMem
     // regress to "provisional" on upgrade.
     (m.contactedAt === undefined || m.contactedAt === null || typeof m.contactedAt === "number") &&
     // Same back-compat rule, same reason: absent is "owes nothing", never "pending".
-    (m.rePinPending === undefined || typeof m.rePinPending === "boolean")
+    (m.rePinPending === undefined || typeof m.rePinPending === "boolean") &&
+    // §21: absent is the dialable link. Present must be exactly "uplink" — any other word invalidates
+    // the store rather than being read as dialable, because a typo here would dial an origin.
+    (m.transport === undefined || m.transport === "uplink") &&
+    (m.uplinkTokenHash === undefined ||
+      (typeof m.uplinkTokenHash === "string" && /^[0-9a-f]{64}$/u.test(m.uplinkTokenHash))) &&
+    (m.uplink === undefined || isUplink(m.uplink))
+  );
+}
+
+/** The member's record of how it dials its lead (§21): a URL and the token, both present and bounded. */
+function isUplink(value: JsonValue | undefined): boolean {
+  const u = asRecord(value);
+  if (u === null) return false;
+  return (
+    typeof u.url === "string" &&
+    u.url.length > 0 &&
+    u.url.length <= 2048 &&
+    typeof u.token === "string" &&
+    u.token.length > 0 &&
+    u.token.length <= 512
   );
 }
 
@@ -412,7 +460,9 @@ function isInvite(value: JsonValue | undefined): value is JsonValue & PendingInv
     i.tokenHash.length > 0 &&
     typeof i.createdAt === "number" &&
     typeof i.expiresAt === "number" &&
-    (i.label === null || typeof i.label === "string")
+    (i.label === null || typeof i.label === "string") &&
+    // §21.5: absent spends at /crew/v1/enroll; "uplink" spends at the door; anything else is a typo.
+    (i.transport === undefined || i.transport === "uplink")
   );
 }
 

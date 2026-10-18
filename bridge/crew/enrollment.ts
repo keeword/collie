@@ -132,6 +132,12 @@ export function mintInvite(
     ttlMs?: number;
     crewName?: string;
     random?: RandomSource;
+    /**
+     * Which door spends this invite (CREW_PROTOCOL.md §21.5). `"uplink"` marks it for the door;
+     * absent marks it for `POST /crew/v1/enroll`, exactly as every invite minted before the door
+     * existed.
+     */
+    transport?: "uplink";
   },
 ): CrewChange<MintedInvite> {
   const random = opts.random ?? randomToken;
@@ -143,6 +149,7 @@ export function mintInvite(
     expiresAt: opts.now + ttl,
     label: opts.label ?? null,
   };
+  const stamped: PendingInvite = opts.transport === "uplink" ? { ...invite, transport: "uplink" } : invite;
   const crew: CrewIdentity = data.crew ?? {
     crewId: random(16),
     name: opts.crewName ?? "collie crew",
@@ -154,14 +161,14 @@ export function mintInvite(
     next: {
       ...data,
       crew: crew,
-      invites: [...data.invites.filter((i) => i.expiresAt > opts.now), invite],
+      invites: [...data.invites.filter((i) => i.expiresAt > opts.now), stamped],
     },
     result: { token, expiresAt: invite.expiresAt },
     audit: {
       action: "crew.invite",
       // The token never reaches the log — a 0600 audit file is still a file, and this one is
       // deliberately readable by the operator's own tooling.
-      detail: { label: invite.label ?? undefined, expiresAt: new Date(invite.expiresAt).toISOString() },
+      detail: { label: stamped.label ?? undefined, expiresAt: new Date(stamped.expiresAt).toISOString() },
     },
   };
 }
@@ -408,6 +415,123 @@ export function acceptEnrollment(
     audit: {
       action: "crew.joined",
       detail: { crew: res.crewId, lead: res.leadMemberId, member: res.memberId, fingerprint: res.leadFingerprint },
+    },
+  };
+}
+
+/**
+ * The enrollment answer for a member that dials out (CREW_PROTOCOL.md §21.5): everything a dialable
+ * member gets, plus the long-term token that admits its connection. The token is in the answer once
+ * and in the member's own store afterwards; the lead keeps only {@link TrustedMember.uplinkTokenHash}.
+ */
+export interface UplinkEnrollment extends EnrollResponse {
+  readonly uplinkToken: string;
+}
+
+/**
+ * Lead side: pin a member that will dial the uplink door, and mint its token (CREW_PROTOCOL.md §21.5).
+ *
+ * The same rules as {@link enrollPeer} — called only after the invite was spent, a re-join keeps the
+ * member id, `contactedAt` starts provisional — with two differences, both load-bearing: the member
+ * is marked `transport: "uplink"` so the lead never dials its address, and a fresh 256-bit token is
+ * minted whose hash is what the door compares on every connection. A re-join mints a NEW token,
+ * because the operator minted a fresh invite and the old credential must not survive it.
+ */
+export function enrollUplinkPeer(
+  data: TrustStoreData,
+  req: { fingerprint: string; certPem: string; address: string; label: string | null },
+  now: number,
+  random: RandomSource = randomToken,
+): CrewChange<UplinkEnrollment> | null {
+  if (data.crew === null) return null;
+  const existing = data.peers.find((p) => p.fingerprint === req.fingerprint);
+  const taken = new Set(data.peers.map((p) => p.memberId).concat(data.self.memberId));
+  const memberId = existing?.memberId ?? mintMemberId(req.label, taken, random);
+  const uplinkToken = random(32);
+  const peer: TrustedMember = {
+    memberId,
+    fingerprint: req.fingerprint,
+    certPem: req.certPem,
+    address: req.address,
+    role: "peer",
+    status: "enrolled",
+    enrolledAt: now,
+    secretGeneration: data.crew.secretGeneration,
+    signedAt: 0,
+    contactedAt: null,
+    transport: "uplink",
+    uplinkTokenHash: hashToken(uplinkToken),
+  };
+  return {
+    next: {
+      ...data,
+      peers: [...data.peers.filter((p) => p.memberId !== memberId), peer],
+    },
+    result: {
+      protocol: CREW_PROTOCOL_VERSION,
+      crewId: data.crew.crewId,
+      crewName: data.crew.name,
+      crewSecret: data.crew.secret,
+      secretGeneration: data.crew.secretGeneration,
+      memberId,
+      leadMemberId: data.self.memberId,
+      leadFingerprint: data.self.fingerprint,
+      leadCertPem: data.self.certPem,
+      uplinkToken,
+    },
+    audit: {
+      action: "crew.enroll",
+      detail: { member: memberId, fingerprint: req.fingerprint, address: req.address, transport: "uplink" },
+    },
+  };
+}
+
+/**
+ * Member side: adopt the crew and remember how to dial back (CREW_PROTOCOL.md §21.5).
+ *
+ * Identical to {@link acceptEnrollment} except the lead entry carries {@link TrustedMember.uplink} —
+ * the door's URL and the token — which is what makes this collie dial out instead of listening. The
+ * address recorded is the URL the operator typed, because that is the only address this member will
+ * ever use.
+ */
+export function acceptUplinkEnrollment(
+  data: TrustStoreData,
+  res: UplinkEnrollment,
+  /** The `wss://` URL this member dialled to enroll — what it will dial again, from now on. */
+  dialedUrl: string,
+  now: number,
+): CrewChange<{ memberId: string }> {
+  const lead: TrustedMember = {
+    memberId: res.leadMemberId,
+    fingerprint: res.leadFingerprint,
+    certPem: res.leadCertPem,
+    address: dialedUrl,
+    role: "lead",
+    status: "enrolled",
+    enrolledAt: now,
+    secretGeneration: res.secretGeneration,
+    signedAt: 0,
+    uplink: { url: dialedUrl, token: res.uplinkToken },
+  };
+  return {
+    next: {
+      ...data,
+      self: { ...data.self, memberId: res.memberId },
+      crew: {
+        crewId: res.crewId,
+        name: res.crewName,
+        secret: res.crewSecret,
+        secretGeneration: res.secretGeneration,
+        rotatedAt: now,
+      },
+      lead,
+      peers: [],
+      invites: [],
+    },
+    result: { memberId: res.memberId },
+    audit: {
+      action: "crew.joined",
+      detail: { crew: res.crewId, lead: res.leadMemberId, member: res.memberId, transport: "uplink" },
     },
   };
 }

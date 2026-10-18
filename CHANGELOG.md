@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **`COLLIE_MUX=none` runs a collie that fronts no multiplexer.** A new `none` adapter answers an empty, healthy census and refuses every pane verb by name — the shape a lead needs on a machine that only holds the front door, and the end state ADR 0036 named. A lead with `none` reads connected instead of permanently reconnecting, its poll cadence relaxes when idle, and `/api/config` publishes the honest all-false capability block.
 - **The uplink frame codec lands.** The reverse crew connection speaks one JSON text frame per message — hello, enroll, request, response, cancel and a heartbeat — parsed strictly and bounded, so a frame that is almost right is refused rather than guessed. `CREW_PROTOCOL.md` §21 specifies it.
+- **An uplink member enrolls with its own token.** `collie crew invite --uplink` mints an invite the dial-in door refuses, and the door mints the member a 256-bit token it stores only as a hash. The enrollment answer is signed with the lead's own key, so the member persists nothing until the signature matches the lead it was invited to.
 
 ### Changed
 

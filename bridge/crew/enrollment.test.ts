@@ -5,6 +5,7 @@ import { X509Certificate } from "node:crypto";
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import {
   acceptEnrollment,
+  acceptUplinkEnrollment,
   adoptLead,
   adoptSecret,
   approvePromotion,
@@ -24,6 +25,7 @@ import {
   createTrustStore,
   dropMembersBehind,
   enrollPeer,
+  enrollUplinkPeer,
   INVITE_TTL_MS,
   leaveCrew,
   markSecretDelivered,
@@ -36,7 +38,7 @@ import {
 } from "./enrollment.ts";
 import { fingerprintOfCert, hashToken, isMemberId } from "./identity.ts";
 import { mintWarrant } from "./warrant.ts";
-import { TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
+import { parseTrustStore, serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
 import { counterRandom, fp, leadStore, material, member, CREW, peerStore, T0 } from "./fixtures.ts";
 
 const R = () => counterRandom("r");
@@ -831,5 +833,87 @@ describe("the enroll answer's crew id", () => {
     expect(crewId).toBe(CREW.crewId);
     expect(parseEnrollResponse(rest)).toBeNull();
     expect(parseEnrollResponse({ ...rest, crewId: 7 })).toBeNull();
+  });
+});
+
+describe("uplink enrollment (§21.5)", () => {
+  const nas = material("nas");
+
+  test("an uplink invite is stamped, and an ordinary invite is not", () => {
+    const fresh = createTrustStore(selfIdentity("desk", material("desk"), T0));
+    const uplink = mintInvite(fresh, { now: T0, transport: "uplink", random: counterRandom("i") });
+    expect(uplink.next.invites.at(-1)?.transport).toBe("uplink");
+    const dialable = mintInvite(fresh, { now: T0, random: counterRandom("j") });
+    expect(dialable.next.invites.at(-1)?.transport).toBeUndefined();
+  });
+
+  test("the lead stores the token's hash and never the token", () => {
+    const fresh = leadStore();
+    const enrolled = enrollUplinkPeer(
+      fresh,
+      { fingerprint: fp("nas"), certPem: nas.certPem, address: "https://collie.example.com", label: "nas" },
+      T0,
+      counterRandom("u"),
+    );
+    expect(enrolled).not.toBeNull();
+    const change = enrolled!;
+    const peer = change.next.peers.find((p) => p.memberId === change.result.memberId);
+    expect(peer?.transport).toBe("uplink");
+    expect(peer?.uplinkTokenHash).toBe(hashToken(change.result.uplinkToken));
+    expect(peer?.address).toBe("https://collie.example.com");
+    // The clear token leaves with the answer. The lead's copy keeps the hash and no token object.
+    expect(peer?.uplink).toBeUndefined();
+    expect(parseTrustStore(serializeTrustStore(change.next))).toEqual(change.next);
+  });
+
+  test("a re-join keeps the member id and replaces the token", () => {
+    const first = enrollUplinkPeer(
+      leadStore(),
+      { fingerprint: fp("nas"), certPem: nas.certPem, address: "https://a.example", label: "nas" },
+      T0,
+      counterRandom("a"),
+    )!;
+    const second = enrollUplinkPeer(
+      first.next,
+      { fingerprint: fp("nas"), certPem: nas.certPem, address: "https://b.example", label: "nas" },
+      T0 + 1,
+      counterRandom("b"),
+    )!;
+    expect(second.result.memberId).toBe(first.result.memberId);
+    expect(second.result.uplinkToken).not.toBe(first.result.uplinkToken);
+    expect(second.next.peers.filter((p) => p.fingerprint === fp("nas"))).toHaveLength(1);
+  });
+
+  test("a store with no crew cannot enroll anyone", () => {
+    const fresh = createTrustStore(selfIdentity("desk", material("desk"), T0));
+    expect(
+      enrollUplinkPeer(fresh, { fingerprint: fp("nas"), certPem: nas.certPem, address: "https://a.example", label: null }, T0),
+    ).toBeNull();
+  });
+
+  test("the member records the url and the token, and nothing else", () => {
+    const enrolled = enrollUplinkPeer(
+      leadStore(),
+      { fingerprint: fp("nas"), certPem: nas.certPem, address: "https://collie.example.com", label: "nas" },
+      T0,
+      counterRandom("m"),
+    )!;
+    const dialed = "wss://collie.example.com/crew/v1/uplink";
+    const joined = acceptUplinkEnrollment(
+      createTrustStore(selfIdentity("nas", nas, T0)),
+      enrolled.result,
+      dialed,
+      T0,
+    );
+    expect(joined.result.memberId).toBe(enrolled.result.memberId);
+    expect(joined.next.self.memberId).toBe(enrolled.result.memberId);
+    expect(joined.next.peers).toEqual([]);
+    expect(joined.next.lead).toMatchObject({
+      role: "lead",
+      address: dialed,
+      uplink: { url: dialed, token: enrolled.result.uplinkToken },
+    });
+    // The member's copy is the one place the clear token persists, and it survives a reload.
+    expect(parseTrustStore(serializeTrustStore(joined.next))).toEqual(joined.next);
   });
 });

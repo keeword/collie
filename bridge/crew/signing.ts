@@ -211,6 +211,47 @@ export function verifyDial(certPem: string, signatureB64: string, parts: DialPar
   return verifyCanonical(certPem, signatureB64, canonicalDial(parts));
 }
 
+// ── The uplink enrollment answer (CREW_PROTOCOL.md §21.5, added 2026-10-18) ──
+//
+// The uplink door hands a joining member its long-term token over a connection that carries no pin
+// yet — the joiner holds only the invite, whose suffix names the lead's fingerprint. So the answer
+// is signed with the lead's identity key, and the joiner verifies it against the certificate that
+// hashes to the fingerprint it was invited with. A stolen copy of the lead's PUBLIC certificate
+// cannot produce this signature; only the key behind it can.
+//
+// A THIRD canonical string, disjoint from the request and the dial by its own domain tag, so a
+// signature minted for one of them can never verify as one of the others under a shared key.
+
+/** The fixed domain tag, and the first field of every uplink-enrollment canonical string. */
+export const UPLINK_ENROLL_DOMAIN = "collie-crew-uplink-enroll-v2";
+
+export interface UplinkEnrollmentParts {
+  /** SHA-256 of the long-term token, lowercase hex. The signature binds the token, not its spelling. */
+  readonly tokenHash: string;
+  readonly timestamp: number;
+}
+
+/**
+ * The string an uplink enrollment answer signs, exactly:
+ *
+ * ```
+ * collie-crew-uplink-enroll-v2\n<tokenHash>\n<timestamp>
+ * ```
+ */
+export function canonicalUplinkEnrollment(parts: UplinkEnrollmentParts): string {
+  return [UPLINK_ENROLL_DOMAIN, parts.tokenHash, String(parts.timestamp)].join("\n");
+}
+
+/** Sign one uplink enrollment answer with the lead's own identity key. */
+export function signUplinkEnrollment(keyPem: string, parts: UplinkEnrollmentParts): string {
+  return signCanonical(keyPem, canonicalUplinkEnrollment(parts));
+}
+
+/** Did the lead whose certificate this is sign this enrollment answer? */
+export function verifyUplinkEnrollment(certPem: string, signatureB64: string, parts: UplinkEnrollmentParts): boolean {
+  return verifyCanonical(certPem, signatureB64, canonicalUplinkEnrollment(parts));
+}
+
 /** Parse `X-Crew-Timestamp`. A non-integer, negative or absent value is `null`, which is a refusal. */
 export function parseTimestamp(raw: string | null | undefined): number | null {
   if (raw === null || raw === undefined) return null;

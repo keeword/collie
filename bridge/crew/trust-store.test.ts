@@ -122,6 +122,47 @@ describe("parse — refusing beats repairing", () => {
     expect(parsed.peers[0]!.contactedAt).toBeUndefined();
     expect(parsed.peers[0]!.contactedAt === null).toBe(false);
   });
+
+  test("an uplink member round-trips, and a dialable member gains no transport field", () => {
+    const uplink = member({
+      memberId: "nas",
+      transport: "uplink",
+      uplinkTokenHash: "ab".repeat(32),
+    });
+    const data = leadStore({ peers: [uplink] });
+    expect(parseTrustStore(serializeTrustStore(data))).toEqual(data);
+    // The clear token never belongs on the lead's copy: the hash round-trips, the token object does not.
+    const persisted = serializeTrustStore(data);
+    expect(persisted).toContain("uplinkTokenHash");
+    expect(persisted).not.toContain('"uplink":');
+  });
+
+  test("a bad uplink field invalidates the WHOLE store", () => {
+    const base = member({ memberId: "nas" });
+    for (const patch of [
+      { transport: "vpn" },
+      { uplinkTokenHash: "short" },
+      { uplinkTokenHash: "AB".repeat(32) },
+      { uplink: { url: "", token: "t" } },
+      { uplink: { url: "wss://x", token: "" } },
+      { uplink: "wss://x" },
+    ]) {
+      const bad = { ...leadStore(), peers: [{ ...base, ...patch }] };
+      expect(parseTrustStore(JSON.stringify(bad)), JSON.stringify(patch)).toBeNull();
+    }
+  });
+
+  test("an uplink invite round-trips, and any other transport word is refused", () => {
+    const data = leadStore({
+      invites: [{ tokenHash: "abc", createdAt: 1, expiresAt: 2, label: null, transport: "uplink" }],
+    });
+    expect(parseTrustStore(serializeTrustStore(data))).toEqual(data);
+    const bad = {
+      ...leadStore(),
+      invites: [{ tokenHash: "abc", createdAt: 1, expiresAt: 2, label: null, transport: "dial" }],
+    };
+    expect(parseTrustStore(JSON.stringify(bad))).toBeNull();
+  });
 });
 
 describe("enrollmentOf — what the mode seam is handed", () => {

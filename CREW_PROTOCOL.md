@@ -3317,3 +3317,26 @@ does today.
 splitting would need, and it arrives as an addition to this table, not as a frame a current build
 silently skips. Every other unknown field is a fault for the same reason: an addition inside version
 2 is a parser change and a row in this table together, or it is not an addition.
+
+### 21.5 Enrollment
+
+An uplink member enrolls with the same invite as any member (§8.2), minted by `collie crew invite
+--uplink`. The invite carries `transport: "uplink"`, and the two doors refuse each other's invites:
+the uplink door spends only an uplink invite, and `POST /crew/v1/enroll` spends only one without the
+field. A token minted for one path can never arrive on the other.
+
+The exchange is the `enroll` / `enrolled` pair of §21.3, and it differs from §8.2 in three places:
+
+- **The answer is signed.** The joining machine holds no pin yet — only the invite, whose suffix
+  names the lead's fingerprint — so the lead signs the answer with its identity key over
+  `collie-crew-uplink-enroll-v2\n<tokenHash>\n<timestamp>` (`bridge/crew/signing.ts`). The joiner
+  verifies the signature against the certificate that hashes to the invited fingerprint, and persists
+  nothing until both hold. A copy of the lead's public certificate cannot produce this signature.
+- **The member gets a long-term token.** 256 bits, minted by the lead, returned once in `enrolled`.
+  The lead stores only its SHA-256 (`uplinkTokenHash`); the member stores the token itself, inside
+  its lead entry (`uplink`), in the same 0600 trust file that already holds its key. The token is
+  what admits the member's later connections. A re-join mints a new one, so the old credential does
+  not survive an operator-issued invite.
+- **The lead does not restart.** The enrollment commits through the bridge's own cached store, so the
+  door can admit the new member the moment its connection exists. An mTLS enrollment still restarts,
+  for §8.1's reason: a pinned `ca` cannot be swapped on a live listener, and the door pins nothing.

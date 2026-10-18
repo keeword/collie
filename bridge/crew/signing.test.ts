@@ -6,8 +6,10 @@ import {
   canonicalRequest,
   parseTimestamp,
   signRequest,
+  signUplinkEnrollment,
   timestampVerdict,
   verifyRequestSignature,
+  verifyUplinkEnrollment,
   MAX_SKEW_MS,
 } from "./signing.ts";
 
@@ -106,5 +108,27 @@ describe("freshness and replay", () => {
     // which matters, because recording it would advance the floor past every legitimate request
     // still in flight.
     expect(timestampVerdict(now - MAX_SKEW_MS - 1, now, now - MAX_SKEW_MS - 2)).toBe("skew");
+  });
+});
+
+describe("the uplink enrollment answer (§21.5)", () => {
+  const answer = { tokenHash: "ab".repeat(32), timestamp: 1_786_000_000_000 };
+
+  test("the lead's own key verifies, and nobody else's does", () => {
+    const signature = signUplinkEnrollment(desk.keyPem, answer);
+    expect(verifyUplinkEnrollment(desk.certPem, signature, answer)).toBe(true);
+    expect(verifyUplinkEnrollment(laptop.certPem, signature, answer)).toBe(false);
+  });
+
+  test("a changed token or timestamp invalidates it", () => {
+    const signature = signUplinkEnrollment(desk.keyPem, answer);
+    expect(verifyUplinkEnrollment(desk.certPem, signature, { ...answer, tokenHash: "cd".repeat(32) })).toBe(false);
+    expect(verifyUplinkEnrollment(desk.certPem, signature, { ...answer, timestamp: answer.timestamp + 1 })).toBe(false);
+  });
+
+  test("garbage is a refusal, never a throw", () => {
+    expect(verifyUplinkEnrollment(desk.certPem, "", answer)).toBe(false);
+    expect(verifyUplinkEnrollment("not a certificate", "abc", answer)).toBe(false);
+    expect(verifyUplinkEnrollment(desk.certPem, "@@@@", answer)).toBe(false);
   });
 });
