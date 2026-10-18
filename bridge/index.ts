@@ -116,7 +116,7 @@ import {
 } from "./crew/peer-client.ts";
 import { CrewRegistry } from "./crew/registry.ts";
 import { leadReleaseHeader, LEG_WALL_CLOCK_MS, CrewFollower, UpdateTurns } from "./crew/follow.ts";
-import { createCrewRouter, type CrewRouterDeps } from "./crew/router.ts";
+import { createCrewRouter, type CrewHandler, type CrewRouterDeps } from "./crew/router.ts";
 import {
   checkpointMarker,
   formatMarker,
@@ -142,6 +142,7 @@ import {
   warrantNamesSelf,
   type StandbyFacts,
 } from "./crew/standby.ts";
+import { createUplinkClient } from "./crew/uplink-client.ts";
 import { createUplinkDoor, uplinkHostOf, uplinkPortOf } from "./crew/uplink-door.ts";
 import { UplinkNeverSent } from "./crew/uplink-fetch.ts";
 import {
@@ -2033,6 +2034,9 @@ const crewLead = (() => {
   });
 })();
 
+/** The crew handler the server built, so the uplink client can dispatch inbound frames through it (§21.4). */
+let uplinkRouter: CrewHandler | null = null;
+
 /**
  * The uplink door (CREW_PROTOCOL.md §21.2): where members that cannot be dialled dial US instead.
  * Its own listener, loopback by default, TLS terminated by the operator's proxy. Absent
@@ -2479,6 +2483,9 @@ const server = startServer({
   // enrolled has no store, gets no handler, and so registers no crew route at all (§11). The
   // surface is handed back by server.ts so a peer answers its lead out of the same closures its own
   // browser routes use — the same snapshot body, and the same session-scoped handlers (§5).
+  onCrewRouter: (handler) => {
+    uplinkRouter = handler;
+  },
   crewRouter:
     trustStore.current() === null
       ? undefined
@@ -2560,12 +2567,32 @@ const server = startServer({
   },
 });
 
+/**
+ * The member's uplink client (CREW_PROTOCOL.md §21.4): dials the lead's door and stays dialled.
+ * Only a member enrolled over the door has `lead.uplink`; everyone else starts nothing, which is
+ * the solo zero-tax contract and every dialable member unchanged.
+ */
+const uplinkClient = (() => {
+  const uplink = trustStore.current()?.lead?.uplink;
+  if (uplink === undefined) return null;
+  const client = createUplinkClient({
+    url: uplink.url,
+    token: uplink.token,
+    self: trustStore.current()?.self.memberId ?? "member",
+    handler: () => uplinkRouter,
+  });
+  client.start();
+  console.log(`[crew] uplink dialing ${uplink.url}`);
+  return client;
+})();
+
 const shutdown = async () => {
   console.log("\n[bridge] shutting down");
   // Stop accepting new connections and let in-flight requests drain briefly (non-forced stop)
   // before we tear down the poll loops and exit.
   await server.stop();
   await uplinkDoor?.stop();
+  uplinkClient?.stop();
   // The CLI's read credential dies with the process that holds its hash (bridge/local-secret.ts).
   await removeLocalSecret(cfg.stateDir, localSecret);
   clearInterval(refreshTimer);

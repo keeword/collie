@@ -3356,6 +3356,28 @@ splitting would need, and it arrives as an addition to this table, not as a fram
 silently skips. Every other unknown field is a fault for the same reason: an addition inside version
 2 is a parser change and a row in this table together, or it is not an addition.
 
+### 21.4 Admission, unchanged
+
+A `req` frame becomes a request, and the request goes through the member's **existing** crew handler —
+the same `createCrewRouter` its HTTPS listener serves, handed back to the client when the server is
+built. Nothing in `admission.ts` changes, and that is the point: a second admission path would be a
+second place for the two factors to be forgotten.
+
+The request is built from the frame alone. Its URL is `http://127.0.0.1` plus the frame's path and
+query, its headers are the frame's headers verbatim, and its body is the frame's body decoded. Those
+headers are exactly the ones `PeerClient.dial` sets on every call, so the member sees a dialled
+request and cannot tell which transport carried it:
+
+- **Identity** is the dial attestation (`x-crew-dial`, §8.6). The member's lead is the one
+  certificate it pinned at enrollment, and `resolveDial` verifies the attestation against it. The
+  connection itself is the channel binding the pinned handshake was: the member opened it to the URL
+  it was enrolled with.
+- **The crew secret** rides `authorization` on every frame, and the handler checks it per frame.
+- **The protocol integer** rides `x-crew-protocol` per frame, with §7's mismatch rule unchanged.
+
+A frame the member cannot parse closes the connection. A request the handler refuses answers with
+the handler's own refusal, which the lead surfaces as it would a dialled one.
+
 ### 21.5 Enrollment
 
 An uplink member enrolls with the same invite as any member (§8.2), minted by `collie crew invite

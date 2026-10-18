@@ -1015,6 +1015,12 @@ export function startServer(opts: {
    */
   crewRouter?: (surface: CrewSurface) => CrewHandler;
   /**
+   * Hands the built crew handler back to the caller. The member's uplink client dispatches inbound
+   * frames through the SAME handler its HTTPS listener serves (CREW_PROTOCOL.md §21.4), so there is
+   * one admission path and not two. Called once, with `null` when this collie has no crew surface.
+   */
+  onCrewRouter?: (handler: CrewHandler | null) => void;
+  /**
    * The Surface counters' totals for the last seven days (M56 spec 09), for `GET /api/health`: `free`,
    * `unknown` and `manual`, numbers only. Absent, or answering null, on an instance that counts nothing.
    */
@@ -2053,6 +2059,9 @@ export function startServer(opts: {
       return routed ?? jsonError({ error: "not found" }, 404, null);
     },
   });
+  // The uplink client on a member dials out and dispatches what arrives through this same handler
+  // (§21.4). `null` for a solo instance, which has no crew surface to hand over.
+  opts.onCrewRouter?.(crewHandler ?? null);
   // Per-session background notifications live in each session's runtime (built by the factory in
   // index.ts, wired to its StateEngine transitions). The routes here only fan preference changes and
   // snooze-clears across every live session's coordinator.
