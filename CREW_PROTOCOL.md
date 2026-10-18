@@ -3282,8 +3282,10 @@ Three things stay exactly as they are, and naming them is the whole of the decis
 ### 21.2 The door
 
 The lead binds a **second listener** for the uplink, and only when `COLLIE_CREW_UPLINK_PORT` is set.
-Absent, nothing is bound: the feature is off and §11's solo contract is untouched. The posture is the
-standby door's (ADR 0028):
+Absent, nothing is bound: the feature is off and §11's solo contract is untouched. It binds for a
+lead and for a solo collie that already holds a trust store, because the first member joins through
+this door and the collie is still solo until that join lands. A peer never binds one: a peer dials
+out. The posture is the standby door's (ADR 0028):
 
 - **Its own `Bun.serve`, its own port, loopback by default** (`COLLIE_CREW_UPLINK_HOST`). It never
   rides the front door's `fetch` — a member connection is not a browser request, and the front door

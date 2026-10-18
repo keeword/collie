@@ -10,7 +10,7 @@ import { hashToken } from "./identity.ts";
 import { verifyUplinkEnrollment } from "./signing.ts";
 import { TrustStore } from "./trust-store.ts";
 import { encodeUplinkFrame, parseUplinkFrame, type UplinkFrame } from "./uplink-frames.ts";
-import { createUplinkDoor, UPLINK_PATH, type UplinkDoor } from "./uplink-door.ts";
+import { createUplinkDoor, UPLINK_PATH, uplinkDoorEnabled, type UplinkDoor } from "./uplink-door.ts";
 import { UplinkNeverSent } from "./uplink-fetch.ts";
 
 // The door over a real socket: a scratch trust store, an OS-chosen port, and Bun's own WebSocket
@@ -61,6 +61,19 @@ function nextFrame(ws: WebSocket): Promise<UplinkFrame | null> {
     ws.addEventListener("close", () => resolve(null), { once: true });
   });
 }
+
+describe("uplinkDoorEnabled", () => {
+  test("a solo collie with a store binds, because the first member joins through the door", () => {
+    expect(uplinkDoorEnabled("solo", 8791, true)).toBe(true);
+    expect(uplinkDoorEnabled("lead", 8791, true)).toBe(true);
+  });
+
+  test("a peer never binds, and no port or no store binds nothing", () => {
+    expect(uplinkDoorEnabled("peer", 8791, true)).toBe(false);
+    expect(uplinkDoorEnabled("lead", null, true)).toBe(false);
+    expect(uplinkDoorEnabled("solo", 8791, false)).toBe(false);
+  });
+});
 
 describe("the uplink door", () => {
   test("a wrong token is refused and a right one is welcomed", async () => {
@@ -185,6 +198,56 @@ describe("the uplink door", () => {
       expect(await res.json()).toEqual({ ok: true });
       door.kill(enrolled.memberId);
       expect(door.connected(enrolled.memberId)).toBe(false);
+    } finally {
+      await door.stop();
+    }
+  });
+
+  test("concurrent dials share one id space, so an answer never crosses a request", async () => {
+    const store = await leadStore();
+    const enrolled = (await commitCrewChange(store, null, (data) =>
+      data === null
+        ? null
+        : enrollUplinkPeer(data, { fingerprint: material("nas").fingerprint, certPem: material("nas").certPem, address: "https://collie.example.com", label: "nas" }, Date.now()),
+    ))!;
+    const door = await startDoor(store);
+    try {
+      const ws = await openSocket(door.port, enrolled.uplinkToken);
+      const seen: number[] = [];
+      ws.addEventListener("message", (ev) => {
+        const frame = parseUplinkFrame(String(ev.data));
+        if (frame?.kind !== "req") return;
+        seen.push(frame.id);
+        const answer: Extract<UplinkFrame, { kind: "res" }> = {
+          kind: "res",
+          id: frame.id,
+          status: 200,
+          // A real answer always carries headers; a headerless frame is refused by the parser.
+          headers: { "content-type": "text/plain" },
+          body: Buffer.from(`path:${frame.path}`).toString("base64"),
+        };
+        // The FIRST request is held back so the second answer lands first: a per-dial id space
+        // (every fetch numbering from 1 again) would hand each caller the other's body.
+        if (seen.length === 1) setTimeout(() => ws.send(encodeUplinkFrame(answer)), 30);
+        else ws.send(encodeUplinkFrame(answer));
+      });
+      const welcomed = nextFrame(ws);
+      ws.send(encodeUplinkFrame({ kind: "hello", protocol: 2, member: enrolled.memberId }));
+      expect((await welcomed)?.kind).toBe("welcome");
+
+      // §6 headers, as a real dial always carries them (the parser refuses a headerless frame), and a
+      // fetch PER DIAL, as the bridge asks for one (index.ts's fetchFor callback): the bug this pins
+      // was a fresh id space per fetch, so two concurrent dials both numbered their requests 1.
+      const init = { method: "GET", headers: { authorization: "Bearer crew-secret" } };
+      const [slow, fast] = await Promise.all([
+        door.fetchFor(enrolled.memberId)("https://collie.example.com/crew/v1/snapshot", init),
+        door.fetchFor(enrolled.memberId)("https://collie.example.com/crew/v1/api/launchers", init),
+      ]);
+      expect(seen.length).toBe(2);
+      expect(seen[0]).not.toBe(seen[1]);
+      expect(await slow.text()).toBe("path:/crew/v1/snapshot");
+      expect(await fast.text()).toBe("path:/crew/v1/api/launchers");
+      ws.close();
     } finally {
       await door.stop();
     }

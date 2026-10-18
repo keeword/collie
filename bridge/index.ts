@@ -143,7 +143,7 @@ import {
   type StandbyFacts,
 } from "./crew/standby.ts";
 import { createUplinkClient } from "./crew/uplink-client.ts";
-import { createUplinkDoor, uplinkHostOf, uplinkPortOf } from "./crew/uplink-door.ts";
+import { createUplinkDoor, uplinkDoorEnabled, uplinkHostOf, uplinkPortOf } from "./crew/uplink-door.ts";
 import { UplinkNeverSent } from "./crew/uplink-fetch.ts";
 import {
   collidingLabels,
@@ -2040,13 +2040,14 @@ let uplinkRouter: CrewHandler | null = null;
 /**
  * The uplink door (CREW_PROTOCOL.md §21.2): where members that cannot be dialled dial US instead.
  * Its own listener, loopback by default, TLS terminated by the operator's proxy. Absent
- * `COLLIE_CREW_UPLINK_PORT` — or a collie that leads nobody — binds nothing, which is the whole
- * feature switched off and the solo zero-tax contract unchanged.
+ * `COLLIE_CREW_UPLINK_PORT` binds nothing. A peer never binds one: a peer dials out. A solo collie
+ * that already has a trust store does, because the first member joins through this door and the
+ * collie is still solo until that join lands.
  */
 const uplinkDoor = (() => {
-  if (crew.mode !== "lead") return null;
   const port = uplinkPortOf(process.env);
-  if (port === null || trustStore.current() === null) return null;
+  // `port === null` first, so the guard also narrows the type for the door's deps below.
+  if (port === null || !uplinkDoorEnabled(crew.mode, port, trustStore.current() !== null)) return null;
   const host = uplinkHostOf(process.env);
   const door = createUplinkDoor({
     store: trustStore,

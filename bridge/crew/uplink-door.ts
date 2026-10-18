@@ -24,6 +24,7 @@
 
 import type { ServerWebSocket } from "bun";
 
+import type { CrewMode } from "../types.ts";
 import type { AuditLog } from "../audit.ts";
 import {
   commitCrewChange,
@@ -74,6 +75,19 @@ export function uplinkHostOf(env: Env = process.env): string {
   return host === undefined || host === "" ? "127.0.0.1" : host;
 }
 
+/**
+ * Whether this process should bind the door.
+ *
+ * A peer dials out and never accepts, so a peer never binds one. A lead does. So does a solo collie
+ * that already has a trust store: the first member joins THROUGH the door, and until that join lands
+ * the collie is still solo (no peers, `deriveMode`). No store means there is nothing to admit
+ * against, and no port means the feature is off. Both stay closed.
+ */
+export function uplinkDoorEnabled(mode: CrewMode, port: number | null, hasStore: boolean): boolean {
+  if (port === null || !hasStore) return false;
+  return mode !== "peer";
+}
+
 /** The largest frame the door accepts, derived from the upload cap so a body within the cap fits. */
 export function uplinkPayloadLimit(maxUploadBytes: number): number {
   const FRAME_OVERHEAD_BYTES = 64 * 1024;
@@ -115,10 +129,22 @@ class Connection implements UplinkSocket {
   private readonly closeHandlers = new Set<() => void>();
   private welcomed = false;
 
+  /**
+   * This connection's ONE crew fetch: one `id` space and one in-flight cap for every caller. A fresh
+   * fetch per `fetchFor` call was the bug this field closes: each instance numbered its requests from
+   * 1 again, so two concurrent dials on one socket — the sweep's `snapshot` beside any phone read —
+   * both waited on `id: 1` and each could resolve on the other's answer, handing a route the body of
+   * a different route. The counter must live as long as the socket does.
+   */
+  readonly crewFetch: CrewFetch;
+
   constructor(
     private readonly ws: ServerWebSocket<Slot>,
     private readonly timer: ReturnType<typeof setTimeout>,
-  ) {}
+    bounds: { inflightMax: number; bodyBytesMax: number },
+  ) {
+    this.crewFetch = makeUplinkFetch(this, bounds);
+  }
 
   /** The first frame arrived; the opening window no longer applies. */
   arm(): void {
@@ -278,7 +304,10 @@ export function createUplinkDoor(deps: UplinkDoorDeps): UplinkDoor {
       maxPayloadLength: payloadLimit,
       open(ws) {
         const timer = setTimeout(() => ws.close(), ENROLL_WINDOW_MS);
-        const conn = new Connection(ws, timer);
+        const conn = new Connection(ws, timer, {
+          inflightMax: LEAD_INFLIGHT_MAX,
+          bodyBytesMax: deps.maxUploadBytes,
+        });
         ws.data.conn = conn;
       },
       message(ws, raw) {
@@ -345,7 +374,9 @@ export function createUplinkDoor(deps: UplinkDoorDeps): UplinkDoor {
       if (conn === undefined || !conn.isWelcomed) {
         return () => Promise.reject(new UplinkNeverSent("uplink: member not connected"));
       }
-      return makeUplinkFetch(conn, { inflightMax: LEAD_INFLIGHT_MAX, bodyBytesMax: deps.maxUploadBytes });
+      // The SAME instance every call, never a fresh one: the id space belongs to the connection
+      // (see Connection.crewFetch), not to a dial.
+      return conn.crewFetch;
     },
     kill(memberId: string): void {
       const conn = connections.get(memberId);
