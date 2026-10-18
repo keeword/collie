@@ -38,6 +38,7 @@ import terminology from "../docs/terminology.md" with { type: "text" };
 import themes from "../docs/themes.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
+import uplink from "../docs/uplink.md" with { type: "text" };
 import voiceAndPush from "../docs/voice-and-push.md" with { type: "text" };
 import windows from "../docs/windows.md" with { type: "text" };
 
@@ -100,6 +101,11 @@ export const DOC_PAGES: readonly DocPage[] = [
     name: "crew",
     purpose: "Several machines behind one URL: invite, join, deputy, failover",
     text: crew,
+  },
+  {
+    name: "uplink",
+    purpose: "A member that dials out to the lead: the invite, the join, and the door it reaches",
+    text: uplink,
   },
   {
     name: "durable-agents",

@@ -1,9 +1,11 @@
 # Terminals
 
 These are the terminals Collie reads [sessions](sessions.md) from: Herdr, tmux, zellij, tuios and
-Tern. Collie drives one terminal per install, and Herdr is the default. This page covers pointing
-Collie at any of them, what each one can answer, and the beacons Collie uses to detect an agent in
-a pane. A durable agent with no screen is not a terminal, and [Durable agents](durable-agents.md) covers it.
+Tern. Collie drives one terminal per install, and Herdr is the default. `none` is the exception: a
+collie that fronts no terminal at all, which is what a lead needs when every machine dials in
+([Uplink members](uplink.md)). This page covers pointing Collie at any of them, what each one can
+answer, and the beacons Collie uses to detect an agent in a pane. A durable agent with no screen is
+not a terminal, and [Durable agents](durable-agents.md) covers it.
 
 tmux and zellij call their own top-level group a session. Collie shows it as a space.
 
@@ -26,6 +28,7 @@ COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
 COLLIE_MUX=tuios collie start
 COLLIE_MUX=tern collie start
+COLLIE_MUX=none collie start
 ```
 
 Set the endpoint when the default target is not the one you want:

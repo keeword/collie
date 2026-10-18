@@ -238,6 +238,13 @@ A deputy is one peer the lead named ahead of time. It binds a standby door with 
 that door is never published. The lead's silence arms it, and your own pairing credential spends it,
 so the phone can reach the deputy while the lead is gone.
 
+## Members that dial in
+
+A member with no inbound port dials out to the lead. The lead runs the uplink door, the member runs
+`collie join wss://<lead>/crew/v1/uplink`, and `crew status` names those members `uplink`. The setup
+and the boundaries are in [Uplink members](uplink.md). A dialable member and an uplink member can be
+in the same crew; only a dialable member can be the deputy.
+
 ## Durable agents in a crew
 
 A member's durable agents show on the lead's phone, in the one Durable agents section, and the member's own

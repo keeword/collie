@@ -6,6 +6,9 @@
   `release.yml`'s gate reads the Windows workflow, and the tolerance for a missing Windows zip is off.
   That tolerance closes itself: it is mandatory once any earlier release carries a Windows zip, or on
   2026-11-15.
+- **Amended in scope by:** [ADR 0110](./0110-an-uplink-member-dials-the-lead.md). A Windows machine may
+  join a crew over an uplink door, because the member opens no port. Leading, adding and reshaping a
+  crew stay refused.
 - **Date:** 2026-10-03
 - **Shipped in:** 1.16.0
 - **Supersedes:** the contrib-only decisions on PR #71 (2026-08-11) and PR #298 (2026-09-26), which

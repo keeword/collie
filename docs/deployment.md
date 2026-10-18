@@ -14,6 +14,7 @@ lives in the README. Security requirements in [docs/security.md](security.md) ap
 - [Several Collies on one host](#several-collies-on-one-host)
 - [Multiple Collie instances on one host](#multiple-collie-instances-on-one-host)
 - [The standby door — a crew's failover path](#the-standby-door--a-crews-failover-path)
+- [The uplink door — members that dial in](#the-uplink-door--members-that-dial-in)
 
 Individual devices can also be authorized without a proxy via
 [pairing](security.md#pair-a-device--the-write-credential).
@@ -752,5 +753,21 @@ Post-recovery:
 - Do not run `crew rotate` until all members have reconnected.
 
 ---
+
+## The uplink door — members that dial in
+
+A member with no inbound port dials out to the lead instead. The lead binds a second loopback
+listener and your proxy forwards one path to it. The setup, the Caddy block and the join command are
+in [Uplink members](uplink.md).
+
+```caddy
+handle /crew/v1/uplink* {
+	reverse_proxy 127.0.0.1:8791
+}
+```
+
+The proxy must keep the path and must not buffer the upgrade. Everything else still goes to the
+front door's port. The phone's pairing and host checks are unchanged: the door is a member
+connection, not a browser one.
 
 [← back to the README](../README.md)

@@ -84,6 +84,12 @@ exactly, and pays no tax for the feature ([`CREW_PROTOCOL.md` §11](./CREW_PROTO
   channel. A peer may also level itself to the release its lead is running, taking that public tag
   from GitHub over anonymous HTTPS on its own decision (ADR 0016's addendum,
   [`CREW_PROTOCOL.md` §20](./CREW_PROTOCOL.md)); still no code, route or verb on the link.
+- **A member can dial the lead instead.** An uplink member opens one WebSocket to a door on the lead
+  (`COLLIE_CREW_UPLINK_PORT`, its own listener, loopback, TLS at the operator's proxy) and the lead's
+  existing crew machinery runs over it unchanged: same polling, same budgets, nothing replayed after a
+  disconnect ([`CREW_PROTOCOL.md` §21](./CREW_PROTOCOL.md), [docs/uplink.md](./docs/uplink.md)). A lead
+  whose machines all dial in runs `COLLIE_MUX=none` and fronts no multiplexer of its own. The dialable
+  crew is unchanged.
 - **Two independent factors gate `/crew/v1/*`,** before any handler runs: **pinned mutual TLS** and
   the **crew secret** ([`CREW_PROTOCOL.md` §8](./CREW_PROTOCOL.md#8-trust-enrollment-factors-rotation)).
   Neither browser gate of §6 applies there, and a peer publishes nothing — its listener is a path

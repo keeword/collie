@@ -170,6 +170,7 @@ and that is the only way to install it on a phone.
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
+| [**Uplink members**](./docs/uplink.md) | Members that dial out to the lead: no open port, no SSH, no Tailscale |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
@@ -241,9 +242,10 @@ has the install, the update, and what is not tested. In short:
 - **Run by Task Scheduler.** `collie start`, `stop`, `restart`, `status` and `uninstall` work as they
   do elsewhere. The task is named `herdr.collie` and starts at your logon.
 - **Not covered.** tmux and zellij (neither has a Windows build), Windows 10, Windows on ARM,
-  a Windows machine joining a crew, and a managed front door: Collie does not run `tailscale serve`
+  a Windows machine leading a crew, and a managed front door: Collie does not run `tailscale serve`
   on Windows, so bring your own,
   [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
+  A Windows machine can join a crew over an uplink door ([Uplink members](./docs/uplink.md)).
   Herdr's action buttons need `bash`, so the manifest lists only `linux` and `macos`.
 
 Herdr on Windows exposes its control socket as a named pipe derived from the full socket path instead

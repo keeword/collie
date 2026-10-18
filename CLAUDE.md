@@ -771,7 +771,10 @@ door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
 ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)); the one exception is the
 **deputy's standby door** — bound, never published, armed by silence and spent by the operator's
 pairing credential ([ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md) ·
-[ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md)).
+[ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md)). An **uplink member** dials the lead
+instead, over a WebSocket to a second loopback listener (`COLLIE_CREW_UPLINK_PORT`), and the same
+machinery runs over it ([ADR 0110](./.adr/0110-an-uplink-member-dials-the-lead.md) ·
+[`CREW_PROTOCOL.md` §21](./CREW_PROTOCOL.md)).
 
 **Touching the crew wire surface forces a protocol decision** — a commit staging one of the
 wire-shape files in `bridge/crew/` must also stage `CREW_PROTOCOL.md` (additive-optional, §7.1) or

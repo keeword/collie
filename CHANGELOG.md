@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie crew invite --uplink` and `collie join wss://…` enroll a member that dials out.** The lead prints a `wss://` join command, and the joining machine pins the lead only after the signed enrollment answer matches the invite's fingerprint. A Windows machine can join this way, which is the one crew verb it may run; leading and the other crew verbs stay refused there.
 - **`crew status` names an uplink member.** A member that dials in shows `uplink` in `crew status` and on the crew status wire, with its address described as where it is known rather than where the lead dials. A dialable member carries no such field.
 - **The uplink path is drilled with two real bridges.** `integration/crew-uplink-harness.test.ts` boots a lead with no multiplexer and a member that dials its door, and asserts the member shows up in the lead's snapshot. It runs with the crew lane (`bun run test:crew`).
+- **`collie docs` lists the uplink page.** The page shipped with the feature but the hand-written embedded registry in `cli/docs-embed.ts` had no line for it, so it was on disk and not in the binary; the registry's drift guard caught it on the first CI run.
 
 ### Changed
 
@@ -46,6 +47,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Enter no longer goes into a turn that starts while Collie types.** Collie now checks the turn again just before it presses Enter. If the agent started working and would not take the text now, the text stays in the box and the phone says so. Submit it when the turn ends. A message the agent queues on its own still goes out. Thanks @mikebenner (#491).
 - **The harness lab runs Codex, OpenCode and omp to the end.** Codex 0.163.0 no longer stops at once on a missing `CODEX_HOME`: the lab makes the folder, copies an API key login and trusts its one project. Codex, OpenCode and omp may now spend the send and ask turns, each run presses its own decline button, and omp gets a lab spec that signs in with an OpenRouter key from the environment.
 - **A lab pass commits when the profile already reaches the version.** The pass moves the verified-versions row alone then, and keeps the date a person wrote. A pass that cannot commit removes its branch and worktree, so the next try is not refused with "exists already".
+- **The crew drill's fake Herdr speaks the real `agent_status`.** It answered an object where the wire carries one word, so a member's pane row crossed the link and was dropped at the lead's parse — no drill ever merged a pane, because none asserted one until the uplink harness did. The fake answers `idle`, as `HERDR_API.md` specifies.
 - **The mux-name guard sets `none` aside.** Registering `COLLIE_MUX=none` made an everyday word a banned name, and the guard then read every `fill="none"` in the frontend and every `modal !== "none"` in the Surface grammar as a hard-coded multiplexer. The word is excluded where the names are derived, the reason sits in the guard's header, and two negative controls pin the exclusion.
 
 ## [1.22.6] - 2026-10-18

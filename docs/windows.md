@@ -540,7 +540,7 @@ A **crew** is several machines that each run a Collie, shown behind one URL ([Cr
 | Windows | Windows 11, x64 | Windows 10, Windows Server and Windows on ARM |
 | Multiplexer | Herdr 0.9.3 or newer for Windows | tmux, zellij and tuios: none has a native Windows build |
 | Service | Task Scheduler, one Collie per machine | A Windows service, winget and MSI |
-| Crew | Collie on one machine | A Windows machine joining a crew |
+| Crew | Joining a crew over an uplink door ([Uplink members](uplink.md)) | Leading a crew, `crew add`, the deputy |
 | Front door | You publish it yourself, by hand | A front door that Collie manages |
 | Binary | `collie.exe`, unsigned, with a sha256 | A signed binary |
 
@@ -556,9 +556,15 @@ These limits also hold:
 
 ### Crews
 
-A Windows machine cannot join a crew in this release. `collie crew invite`, `crew join`,
-`crew add`, `crew deputy`, `crew approve-promote` and `collie promote` refuse on Windows, say so in
-one sentence and change nothing. Collie on one Windows machine works on its own.
+A Windows machine can join a crew over an uplink door, and only that way. The member dials out to the
+lead and opens no port ([Uplink members](uplink.md)):
+
+```powershell
+collie join wss://collie.example.com/crew/v1/uplink
+```
+
+`collie crew invite`, `crew add`, `crew deputy`, `crew approve-promote` and `collie promote` refuse on
+Windows, say so in one sentence and change nothing. Leading stays a Linux or macOS machine.
 
 ## Moving from the community script
 
