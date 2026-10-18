@@ -1,0 +1,28 @@
+# The public-host lead: collie behind Caddy. Only 443 is published.
+# From the repo root: docker compose -f deploy/uplink/compose.yml up -d --build
+services:
+  lead:
+    build:
+      context: ../..
+      dockerfile: deploy/uplink/Dockerfile
+    environment:
+      COLLIE_PUBLIC_HOSTS: ${COLLIE_DOMAIN:-collie.localhost}
+      COLLIE_ALLOWED_ORIGINS: https://${COLLIE_DOMAIN:-collie.localhost}
+    volumes:
+      - lead-state:/var/lib/collie
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    ports:
+      - "443:443"
+    environment:
+      COLLIE_DOMAIN: ${COLLIE_DOMAIN:-collie.localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - lead
+    restart: unless-stopped
+volumes:
+  lead-state:
+  caddy-data:

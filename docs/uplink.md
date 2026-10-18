@@ -24,6 +24,26 @@ COLLIE_CREW_UPLINK_PORT=8791
 connected instead of permanently reconnecting. The door binds loopback. Your reverse proxy
 terminates TLS on 443 and forwards the uplink path to it.
 
+## With Docker
+
+```bash
+docker compose -f deploy/uplink/compose.yml up -d --build
+```
+
+Caddy publishes 443. The lead is only on the compose network: nothing publishes 8787 or 8791.
+Inside the container the lead binds every interface, which is what lets Caddy reach it, and
+`COLLIE_ALLOW_NON_LOOPBACK_BIND=1` is set for that reason. Set `COLLIE_DOMAIN` to the name Caddy
+serves.
+
+```bash
+docker compose -f deploy/uplink/compose.yml exec lead \
+  bun cli/main.ts crew invite --uplink --address "$COLLIE_DOMAIN"
+docker compose -f deploy/uplink/compose.yml restart lead
+```
+
+The invite is written by the CLI, and the bridge reads its store once at boot, so restart the
+container before the member joins. The join itself does not need a second restart.
+
 | Key | Default | What it does |
 | --- | --- | --- |
 | `COLLIE_CREW_UPLINK_PORT` | *(unset)* | The door's port. Unset binds nothing: the feature is off. |

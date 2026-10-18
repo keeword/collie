@@ -1,0 +1,9 @@
+# TLS ends here. The lead stays on the docker network and is not published.
+{$COLLIE_DOMAIN:collie.localhost} {
+	handle /crew/v1/uplink* {
+		reverse_proxy lead:8791
+	}
+	handle {
+		reverse_proxy lead:8787
+	}
+}

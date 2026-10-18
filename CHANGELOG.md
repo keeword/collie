@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie crew invite --uplink` and `collie join wss://…` enroll a member that dials out.** The lead prints a `wss://` join command, and the joining machine pins the lead only after the signed enrollment answer matches the invite's fingerprint. A Windows machine can join this way, which is the one crew verb it may run; leading and the other crew verbs stay refused there.
 - **`crew status` names an uplink member.** A member that dials in shows `uplink` in `crew status` and on the crew status wire, with its address described as where it is known rather than where the lead dials. A dialable member carries no such field.
 - **The uplink path is drilled with two real bridges.** `integration/crew-uplink-harness.test.ts` boots a lead with no multiplexer and a member that dials its door, and asserts the member shows up in the lead's snapshot. It runs with the crew lane (`bun run test:crew`).
+- **A public-host lead runs in Docker.** `deploy/uplink` builds a lead with no multiplexer and the uplink door, and puts Caddy in front of it. Only port 443 is published. The door also binds before the first member joins, which is what makes that member able to join at all.
 - **`collie docs` lists the uplink page.** The page shipped with the feature but the hand-written embedded registry in `cli/docs-embed.ts` had no line for it, so it was on disk and not in the binary; the registry's drift guard caught it on the first CI run.
 
 ### Changed
