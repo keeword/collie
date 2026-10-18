@@ -3253,3 +3253,67 @@ A member that predates this amendment ignores both headers and omits the field. 
 are the closed one, and none of them refuses anything. A lead that predates it sends neither header,
 which is the state every crew is in until an operator confirms an update. The protocol integer is
 still the only thing that refuses (§7.1).
+
+---
+
+## 21. The uplink door — a member that dials out *(added 2026-10-18)*
+
+**The problem this closes:** the crew link of §2 assumes the lead can dial every member. A member
+behind a network that offers no inbound path — no port, no SSH, no overlay — cannot be reached that
+way at all. The uplink door inverts the **dialer** and nothing else: the member opens one long-lived
+connection outward to the lead, and every request the lead would have dialled rides that connection
+instead.
+
+### 21.1 A transport inversion, not a push model
+
+Three things stay exactly as they are, and naming them is the whole of the decision:
+
+- **The lead still asks and the member still answers.** Freshness stays the poll of §10.1, on the
+  same budgets, and §16's reservation of a peer→lead stream stays unbuilt. The uplink carries the
+  requests the lead already makes; it adds no channel the member speaks first on.
+- **The protocol integer stays 2.** Everything the uplink adds is additive-optional with
+  absent-means-closed readings (§7.1): a member with no `transport` field is dialled exactly as
+  today, and a build that predates the door has no door.
+- **The two factors of §8.1 keep their jobs and change their carriers.** The pairwise factor becomes
+  a per-member token presented at the connection (the lead stores only its hash), and the crew-wide
+  factor is unchanged: the crew secret rides every frame, and the member's own admission checks it
+  per frame exactly as it checks it per request today.
+
+### 21.3 The frames
+
+One JSON object per WebSocket **text** frame, discriminated by `kind`
+(`bridge/crew/uplink-frames.ts`). A frame that does not parse — wrong shape, unknown kind, a bound
+exceeded — is a fault of the **connection**, and the side that sees it closes. There is no
+per-request recovery from a frame the other end cannot read.
+
+| `kind` | Direction | Carries |
+|---|---|---|
+| `hello` | member → lead | `protocol`, `member`, optional `version` — the same facts `GET /crew/v1/hello` answers |
+| `welcome` | lead → member | `member` (the lead's), `protocol`, optional `version` |
+| `enroll` | joining machine → lead | the body of `POST /crew/v1/enroll` (§8.2), plus the origin the member will be known by |
+| `enrolled` | lead → joining machine | the enrollment answer plus the long-term token, **signed** (§21.5) |
+| `req` | lead → member | `id`, `method`, `path` (path and query), the §6 header set, optional base64 `body` |
+| `res` | member → lead | `id`, `status`, response headers, optional base64 `body` |
+| `cancel` | lead → member | `id` — the lead's own deadline fired (§21.7) |
+| `ping` / `pong` | member → lead, and back | nothing — the heartbeat (§21.7) |
+
+`req` carries §6's headers **verbatim and lower-cased**: `authorization` (the crew secret),
+`x-crew-protocol`, `x-crew-member`, `x-crew-device`, `x-crew-dial`, `x-crew-timestamp`, and the
+optional `x-crew-preflight`, `x-crew-lead-release`, `x-crew-update-turn`, plus `if-none-match` and
+`content-type`. The dial attestation (`x-crew-dial`) is what lets the member's unchanged admission
+name its caller (§21.4), so it is not optional on this transport.
+
+**Bodies are base64 and bounded.** The bound is the door's own upload cap, so a body the lead would
+have refused before dialling (§13) is refused before it is framed. One consequence is stated rather
+than hidden: an upload that streams over the pinned link is **buffered** over the uplink. It is one
+operator action, under the same cap, and the cap is checked before the first byte is framed.
+
+**`accept-encoding` is stripped on the way out.** The peer hop of the pinned link already forces
+`identity` (§9, ADR 0023); the uplink does the same by omitting the header, so the bytes a `res`
+carries are the identity bytes the ETag names, and the lead compresses for the phone exactly as it
+does today.
+
+**A field named `more` is reserved and refused.** It is the continuation marker a future frame
+splitting would need, and it arrives as an addition to this table, not as a frame a current build
+silently skips. Every other unknown field is a fault for the same reason: an addition inside version
+2 is a parser change and a row in this table together, or it is not an addition.
