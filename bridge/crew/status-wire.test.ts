@@ -145,6 +145,15 @@ describe("crewStatusBody — a peer's row says what the registry believes and no
     });
   });
 
+  test("an uplink member names its transport, and a dialable member names none", () => {
+    const uplink = crewStatusBody(
+      sources({ store: leadStore({ peers: [member({ memberId: "laptop", transport: "uplink" })] }) }),
+    )!;
+    expect(uplink.members[1]?.transport).toBe("uplink");
+    // Absent, not a default: a phone from before the field keeps rendering what it rendered.
+    expect(Object.keys(crewStatusBody(sources())!.members[1]!)).not.toContain("transport");
+  });
+
   test("a reason is passed through verbatim, and a never-seen peer reads as lastSeenAt 0", () => {
     const body = crewStatusBody(
       sources({

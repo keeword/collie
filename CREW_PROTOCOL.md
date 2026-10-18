@@ -3400,3 +3400,7 @@ The exchange is the `enroll` / `enrolled` pair of §21.3, and it differs from §
 - **The lead does not restart.** The enrollment commits through the bridge's own cached store, so the
   door can admit the new member the moment its connection exists. An mTLS enrollment still restarts,
   for §8.1's reason: a pinned `ca` cannot be swapped on a live listener, and the door pins nothing.
+
+`crew status` names an uplink member with `transport: "uplink"`, on the wire and in the lead's own
+printout, and says its address is where the member is known rather than where the lead dials. A
+dialable member carries no such field: absent means the link of §8.1.

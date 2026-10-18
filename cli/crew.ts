@@ -1522,6 +1522,9 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   for (const m of members) {
     const behind = m.status === "enrolled" && m.secretGeneration !== data.crew.secretGeneration;
     emit(`  ${m.memberId}  (${m.role})  ${m.address}`, "plain");
+    if (m.transport === "uplink") {
+      emit("    link  uplink — this member dials in; the address above is where it is known, not dialled", "dim");
+    }
     emit(`    pinned  ${m.fingerprint.slice(0, 16)}…  enrolled ${new Date(m.enrolledAt).toISOString()}`, "dim");
     emit(
       `    secret  generation ${m.secretGeneration}` +

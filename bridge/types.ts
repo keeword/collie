@@ -867,6 +867,12 @@ export interface CrewMemberStatus {
   secretBehind: boolean;
   /** Enrolled but never once reachable — the shape a half-finished join takes (§8.2). */
   provisional: boolean;
+  /**
+   * How the lead reaches this member (CREW_PROTOCOL.md §21). `"uplink"`: the member dials in and
+   * `address` is the origin it is known by, never dialled. **Absent means the dialable link**, so a
+   * phone from before this field renders exactly what it rendered.
+   */
+  transport?: "uplink";
   /** Who a `conflicted` member says it follows instead (§18.10). Present only in that state. */
   conflict?: { leadMemberId: string; warrantGeneration: number | null };
   /**

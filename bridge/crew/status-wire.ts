@@ -163,6 +163,8 @@ function peerRow(
     // and must never read as provisional, which is the rule `crew status` applies to the same field.
     provisional: record.contactedAt === null && state.health !== "reachable",
   };
+  // §21: absent means the dialable link, so the key is omitted rather than sent as a default.
+  if (record.transport === "uplink") row.transport = "uplink";
   // Assigned, never conditionally spread: an optional key is OMITTED when there is nothing to say,
   // never sent as null (CREW_PROTOCOL.md §11).
   if (state.reason !== null) row.reason = state.reason;
