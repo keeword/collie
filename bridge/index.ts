@@ -143,6 +143,7 @@ import {
   type StandbyFacts,
 } from "./crew/standby.ts";
 import { createUplinkDoor, uplinkHostOf, uplinkPortOf } from "./crew/uplink-door.ts";
+import { UplinkNeverSent } from "./crew/uplink-fetch.ts";
 import {
   collidingLabels,
   collisionReportOf,
@@ -443,6 +444,15 @@ function crewPeerClient(data: TrustStoreData): PeerClient {
     // measurements that produced this pair. It is also the boot gate's whole budget (§18.11).
     patientTimeoutMs: crewHelloBudget(cfg.pollMs),
     fetch: (url, init) => fetch(url, init),
+    // An uplink member is reached over the socket it opened to the door, never dialled (§21). A
+    // dialable member returns undefined and keeps the platform fetch above. A member that should be
+    // connected and is not fails before anything is sent, so the phone reads a refusal, not an
+    // unknown outcome (§10.3).
+    fetchFor: (link) => {
+      const member = trustStore.current()?.peers.find((peer) => peer.memberId === link.memberId);
+      if (member?.transport !== "uplink") return undefined;
+      return uplinkDoor?.fetchFor(link.memberId) ?? (() => Promise.reject(new UplinkNeverSent("uplink: no door")));
+    },
     // EVERY dial is attested with this collie's own key (§8.6's dial attestation). A peer that has
     // anchored a deputy can no longer read "the handshake was pin-enforcing" as "this is my lead" —
     // the list names one of two — so the caller says which, and it says it on every route rather than

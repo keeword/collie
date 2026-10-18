@@ -29,6 +29,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The uplink frame codec lands.** The reverse crew connection speaks one JSON text frame per message — hello, enroll, request, response, cancel and a heartbeat — parsed strictly and bounded, so a frame that is almost right is refused rather than guessed. `CREW_PROTOCOL.md` §21 specifies it.
 - **An uplink member enrolls with its own token.** `collie crew invite --uplink` mints an invite the dial-in door refuses, and the door mints the member a 256-bit token it stores only as a hash. The enrollment answer is signed with the lead's own key, so the member persists nothing until the signature matches the lead it was invited to.
 - **The lead grows an uplink door.** With `COLLIE_CREW_UPLINK_PORT` set, a lead binds a second loopback listener where members that cannot be dialled connect outward. A token admits a member, a connection with none enrolls one, and a wrong token gets the same refusal as no token. Unset, nothing is bound.
+- **The lead dials an uplink member through its open socket.** A member enrolled with `transport: "uplink"` is never dialled: its requests ride the connection it opened, and a request that cannot be framed fails before anything is sent, so the phone reads a refusal instead of an unknown outcome. A socket that dies mid-request reports the outcome as unknowable and replays nothing.
 
 ### Changed
 

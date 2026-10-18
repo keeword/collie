@@ -3299,6 +3299,24 @@ is made in constant time over the whole roster. Anything else presented as a tok
 `401 {"error":"unauthorized"}`, naming nothing. No token at all is an enrollment connection (§21.5),
 which has five seconds to send its `enroll` frame and is closed after the answer.
 
+### 21.7 Heartbeat, backpressure, cancellation, and no replay
+
+- **Heartbeat.** The member sends `ping` every 20 seconds and the door answers `pong`. A socket the
+  door has not heard from for 75 seconds is closed by the listener's own idle timeout — the lead
+  runs no timer of its own for this. The same frames keep a NAT mapping alive across a proxy that
+  drops quiet sockets.
+- **Budgets are unchanged.** A poll still gets §10.1's strict budget and a forwarded write still gets
+  `WRITE_BUDGET_MS`. The lead's abort fires `cancel` toward the member and the call is reported as a
+  timeout. The member stops the work the frame names.
+- **Backpressure is a refusal, not a queue.** The lead frames at most 8 requests to one member at a
+  time, and the member executes at most 4; the frames past that are answered `503` immediately. A
+  request that cannot be framed — no live socket, or the cap — fails BEFORE anything is sent, and the
+  phone reads a clean refusal (`attempted: false`), never an unknown outcome.
+- **Nothing is replayed.** A socket that dies with requests in flight fails all of them. Whether a
+  given one had reached the member is unknowable, so a write surfaces as `write_outcome_unknown` and
+  a read as `host_unreachable` (§10.3), and the reconnect carries none of them again. The next sweep
+  re-reads state. The operator's remedy is the one §10.3 already names: re-read the pane and decide.
+
 ### 21.3 The frames
 
 One JSON object per WebSocket **text** frame, discriminated by `kind`

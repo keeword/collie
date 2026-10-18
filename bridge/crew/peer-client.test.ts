@@ -35,6 +35,7 @@ import {
   type CrewLink,
   type PeerClientDeps,
 } from "./peer-client.ts";
+import { UplinkNeverSent } from "./uplink-fetch.ts";
 import type { CrewRequestInit } from "./transport.ts";
 
 // The lead's client, tested against a FAKE fetch rather than a socket (CLAUDE.md: anything needing
@@ -78,6 +79,7 @@ function client(
     device?: string | null;
     sign?: PeerClientDeps["sign"];
     dialSign?: PeerClientDeps["dialSign"];
+    fetchFor?: PeerClientDeps["fetchFor"];
     now?: () => number;
   } = {},
 ) {
@@ -87,6 +89,7 @@ function client(
     timeoutMs: over.timeoutMs ?? 50,
     patientTimeoutMs: over.patientTimeoutMs,
     fetch,
+    fetchFor: over.fetchFor,
     now: over.now ?? (() => 1_000),
     device: over.device === undefined ? undefined : () => over.device ?? null,
     sign: over.sign,
@@ -898,6 +901,34 @@ describe("`attempted` — the input to §10.3's refuse-vs-unknown decision", () 
     const fetch: CrewFetch = () => Promise.reject(new Error("socket hang up"));
     const outcome = await client(fetch).proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
     expect(!outcome.ok && outcome.state === "unreachable" && outcome.attempted).toBeUndefined();
+  });
+
+  test("an uplink member rides its own fetch, and a never-sent refusal says so", async () => {
+    let platformCalls = 0;
+    const platform: CrewFetch = async () => {
+      platformCalls += 1;
+      return new Response("{}", { status: 200, headers: { "x-crew-protocol": "2" } });
+    };
+    let uplinkCalls = 0;
+    const uplink: CrewFetch = async () => {
+      uplinkCalls += 1;
+      return new Response("{}", { status: 200, headers: { "x-crew-protocol": "2" } });
+    };
+    await client(platform, { fetchFor: () => uplink }).hello(laptop);
+    expect(uplinkCalls).toBe(1);
+    expect(platformCalls).toBe(0);
+
+    // Nothing framed: the phone gets a clean refusal, not an unknown outcome.
+    const refused = await client(platform, {
+      fetchFor: () => () => Promise.reject(new UplinkNeverSent("uplink: member not connected")),
+    }).proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+    expect(!refused.ok && refused.state === "unreachable" && refused.attempted).toBe(false);
+
+    // The socket died after the request was framed: still unknowable, so `attempted` stays absent.
+    const died = await client(platform, {
+      fetchFor: () => () => Promise.reject(new Error("uplink: connection closed")),
+    }).proxy(laptop, "pane/w1:p1/reply", undefined, { method: "POST" });
+    expect(!died.ok && died.state === "unreachable" && died.attempted).toBeUndefined();
   });
 });
 

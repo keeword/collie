@@ -20,6 +20,7 @@ import {
 import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
+import { UplinkNeverSent } from "./uplink-fetch.ts";
 import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SessionState } from "../types.ts";
@@ -509,6 +510,12 @@ export interface PeerClientDeps {
    */
   readonly patientTimeoutMs?: number;
   readonly fetch: CrewFetch;
+  /**
+   * The fetch for ONE link, when it is not the platform's ({@link fetch}). The uplink door answers
+   * here for a member that dials in (CREW_PROTOCOL.md §21); `undefined` keeps the platform fetch,
+   * which is every dialable member and every build from before the door existed.
+   */
+  readonly fetchFor?: (link: CrewLink) => CrewFetch | undefined;
   readonly now?: () => number;
   /** The operator's device id, forwarded for the peer's audit trail (§6, §12). Off ⇒ `null`. */
   readonly device?: () => string | null;
@@ -950,7 +957,9 @@ export class PeerClient {
       const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
-      res = await this.deps.fetch(url, dialInit);
+      // An uplink member's requests ride its live socket; everyone else uses the platform fetch.
+      const dialFetch = this.deps.fetchFor?.(link) ?? this.deps.fetch;
+      res = await dialFetch(url, dialInit);
       // A response — ANY response — means the handshake completed and the pool holds a connection the
       // next strict-budget request can ride. Status is irrelevant here; it is read further down.
       this.settle(link, true);
@@ -959,14 +968,18 @@ export class PeerClient {
       // Timeout, connection refused, DNS, TLS — one state, because the phone's answer is the same in
       // all of them: last-good state, marked stale (§10.2). The peer's address is named; the secret
       // never appears in a reason string, and nothing here interpolates one.
-      const aborted = controller.signal.aborted;
+      const neverSent = err instanceof UplinkNeverSent;
+      // `neverSent` is the one case where we KNOW the request did not leave: the uplink fetch throws
+      // it before framing (no socket, or the in-flight cap). §10.3 then reports a clean refusal
+      // rather than an unknown outcome. Everywhere else `attempted` stays absent, because the runtime
+      // cannot say whether a dead socket had already carried the bytes.
+      const aborted = !neverSent && controller.signal.aborted;
       const reason = aborted ? `timed out after ${timeoutMs}ms` : errorReason(err);
-      // `attempted` is left absent, i.e. "possibly sent". The runtime does not tell us whether the
-      // request had already been written when the socket died, and §10.3 is explicit that an
-      // unresolvable ambiguity is surfaced rather than guessed.
-      //
       // `timedOut` is NOT the same ambiguity: the abort is this process's own clock firing, so it is
       // known rather than guessed, and it is what lets §10.4 tell a slow link from a dead host.
+      if (neverSent) {
+        return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, attempted: false });
+      }
       return this.fail({ state: "unreachable", reason: `${route}: ${reason}`, timedOut: aborted });
     } finally {
       clearTimeout(timer);
