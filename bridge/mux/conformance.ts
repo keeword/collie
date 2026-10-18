@@ -189,6 +189,19 @@ function declares(adapter: MuxAdapter, capability: MuxCapability): boolean {
   return adapter.capabilities.supports[capability];
 }
 
+/**
+ * Whether this adapter fronts no terminals at all (`MuxAdapter.paneless`).
+ *
+ * The suite's pane-needing legs read this rather than a mux name: an adapter that can never list a
+ * pane cannot be asked to prove pane behaviour, so those legs pass vacuously — the empty-census
+ * honesty and the by-name refusals are still proven by the checks that do run. It is a declared
+ * fact and not a name branch, for the registry's own reason: a name the engine spells is a name a
+ * fourth adapter cannot live under.
+ */
+function isPaneless(adapter: MuxAdapter): boolean {
+  return adapter.paneless === true;
+}
+
 /** The refusal an outcome carries, or null when it succeeded. Erases the value type on purpose. */
 function refusalOf<T>(outcome: MuxOutcome<T>): MuxRefusalOutcome | null {
   return outcome.ok ? null : outcome;
@@ -463,8 +476,10 @@ const latencyIsDeclared: MuxReadCheck = {
     }
     if (latency.kind === "bounded") {
       // A bound of zero (or NaN, or a negative) is not a fast adapter, it is an unstated one: it
-      // would publish "synced 0s ago" forever and promise a freshness nothing keeps.
-      if (!Number.isFinite(latency.ms) || latency.ms <= 0) {
+      // would publish "synced 0s ago" forever and promise a freshness nothing keeps. The ONE
+      // exception is a paneless adapter, whose topology cannot change at all: "never stale" is
+      // then not a promise something keeps but a fact about nothing, and 0 is its exact number.
+      if ((!Number.isFinite(latency.ms) || latency.ms <= 0) && !isPaneless(adapter)) {
         problems.push(`a bounded topologyLatency states ms=${String(latency.ms)}, which is not a bound`);
       }
     }
@@ -503,7 +518,11 @@ const snapshotIsWellFormed: MuxReadCheck = {
   async run(adapter) {
     const snapshot = await adapter.snapshot();
     const problems: string[] = [];
-    if (snapshot.panes.length === 0) problems.push("snapshot() returned no panes — nothing to render");
+    // A paneless adapter's empty census is health by declaration (types.ts `paneless`) — the lead
+    // that fronts nothing renders its members, and "nothing to render" is exactly what it renders.
+    if (snapshot.panes.length === 0 && !isPaneless(adapter)) {
+      problems.push("snapshot() returned no panes — nothing to render");
+    }
     for (const problem of checkIdentitySet(snapshot.panes)) {
       problems.push(
         problem.kind === "duplicate"
@@ -790,6 +809,9 @@ const refreshSeesASilentChange: MuxWorldCheck = {
   run(fixture) {
     return inWorld(fixture, async (world) => {
       const { adapter } = world;
+      // A paneless adapter has no topology to change, silently or otherwise; `refresh()` losing
+      // nothing is proven by the read-only check.
+      if (isPaneless(adapter)) return [];
       const before = topologySignature(await adapter.snapshot());
       // NOT a poke on an event channel. A change that announced itself would have reached the watch
       // by itself, and this check would then pass on every adapter while proving nothing about
@@ -905,7 +927,9 @@ const identitySurvivesPerturbation: MuxWorldCheck = {
       const { adapter } = world;
       const before = (await adapter.snapshot()).panes;
       const target = before.find((pane) => pane.alive) ?? before.at(0);
-      if (target === undefined) return ["the fixture's world has no pane to follow"];
+      if (target === undefined) {
+        return isPaneless(adapter) ? [] : ["the fixture's world has no pane to follow"];
+      }
       const problems: string[] = [];
 
       await world.reconnect();
@@ -931,7 +955,9 @@ const idsAreNeverRecycled: MuxWorldCheck = {
     return inWorld(fixture, async (world) => {
       const { adapter } = world;
       const doomed = livePanes(await adapter.snapshot()).at(0);
-      if (doomed === undefined) return ["the fixture's world has no pane to end"];
+      if (doomed === undefined) {
+        return isPaneless(adapter) ? [] : ["the fixture's world has no pane to end"];
+      }
       await world.endPane(doomed.paneId);
       const problems: string[] = [];
       const survivors = await adapter.snapshot();
@@ -1025,7 +1051,9 @@ const aGonePaneAnswersGone: MuxWorldCheck = {
     return inWorld(fixture, async (world) => {
       const { adapter } = world;
       const doomed = livePanes(await adapter.snapshot()).at(0);
-      if (doomed === undefined) return ["the fixture's world has no pane to end"];
+      if (doomed === undefined) {
+        return isPaneless(adapter) ? [] : ["the fixture's world has no pane to end"];
+      }
       await world.endPane(doomed.paneId);
       const problems: string[] = [];
       for (const call of capabilityCalls(adapter, {
@@ -1118,7 +1146,11 @@ const watchKeepsItsPromise: MuxWorldCheck = {
     return inWorld(fixture, async (world) => {
       const { adapter } = world;
       const pane = livePanes(await adapter.snapshot()).at(0);
-      if (pane === undefined) return ["the fixture's world has no pane to watch"];
+      if (pane === undefined) {
+        // A paneless adapter's watch is proven by its own unit test: it comes up, never pokes, and
+        // goes down exactly once on close. Here there is no pane to name in `panes: [...]`.
+        return isPaneless(adapter) ? [] : ["the fixture's world has no pane to watch"];
+      }
       const problems: string[] = [];
       let up = 0;
       let downs = 0;
@@ -1171,6 +1203,16 @@ const focusFollowsTheMultiplexer: MuxWorldCheck = {
       const target = panes.find((pane) => panes.some((other) => other.spaceId === pane.spaceId && other.paneId !== pane.paneId));
       const other = panes.find((pane) => pane.spaceId === target?.spaceId && pane.paneId !== target.paneId);
       if (target === undefined || other === undefined) {
+        // A paneless adapter takes the no-terminal branch below with zero panes, which is the whole
+        // of what it owes: nothing is ever focused, and setFocus refuses.
+        if (isPaneless(adapter) && panes.length === 0) {
+          const focused = panes.filter((pane) => pane.focused);
+          if (focused.length > 0) return [`the world has no terminal to focus, and the snapshot still focuses ${focused.map((pane) => pane.paneId).join(", ")}`];
+          if (declares(adapter, "setFocus")) return ["the world has no terminal to focus, and setFocus is declared"];
+          const moved = await adapter.setFocus("conformance-no-pane");
+          if (moved.ok) return ["the world has no terminal to focus, and setFocus SUCCEEDED"];
+          return [];
+        }
         return ["the fixture's world has no space holding two live panes to move focus between"];
       }
       const problems: string[] = [];

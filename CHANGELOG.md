@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **`COLLIE_MUX=none` runs a collie that fronts no multiplexer.** A new `none` adapter answers an empty, healthy census and refuses every pane verb by name — the shape a lead needs on a machine that only holds the front door, and the end state ADR 0036 named. A lead with `none` reads connected instead of permanently reconnecting, its poll cadence relaxes when idle, and `/api/config` publishes the honest all-false capability block.
+
 ### Changed
 
 - **Claude Code 2.1.302 is verified for the screen reader.** The harness lab walked its slash menu, read the Surface on 22 screens, made one probed send and one ask answer, and passed on 2026-10-17. The browser leg on the 1.22.6 release commit ran on 2.1.302 as well and passed all fifteen cases on the first tap. The journal reader stays verified on 2.1.296.
@@ -34,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Enter no longer goes into a turn that starts while Collie types.** Collie now checks the turn again just before it presses Enter. If the agent started working and would not take the text now, the text stays in the box and the phone says so. Submit it when the turn ends. A message the agent queues on its own still goes out. Thanks @mikebenner (#491).
 - **The harness lab runs Codex, OpenCode and omp to the end.** Codex 0.163.0 no longer stops at once on a missing `CODEX_HOME`: the lab makes the folder, copies an API key login and trusts its one project. Codex, OpenCode and omp may now spend the send and ask turns, each run presses its own decline button, and omp gets a lab spec that signs in with an OpenRouter key from the environment.
 - **A lab pass commits when the profile already reaches the version.** The pass moves the verified-versions row alone then, and keeps the date a person wrote. A pass that cannot commit removes its branch and worktree, so the next try is not refused with "exists already".
+- **The mux-name guard sets `none` aside.** Registering `COLLIE_MUX=none` made an everyday word a banned name, and the guard then read every `fill="none"` in the frontend and every `modal !== "none"` in the Surface grammar as a hard-coded multiplexer. The word is excluded where the names are derived, the reason sits in the guard's header, and two negative controls pin the exclusion.
 
 ## [1.22.6] - 2026-10-18
 
@@ -49,7 +54,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Heads up card shows while background agents are listed.** With three or more agents in Claude Code's panel under the box, the card was withheld and its tap refused. Only the panel's own named rows are skipped, so plain output under a box still counts. Thanks @leftos (#493). ([cb5cbf5](https://github.com/AltanS/collie/commit/cb5cbf5))
 - **A command that must never wait for a turn is no longer held and typed after it.** When the bridge could not read the agent's version, a `/clear`, `/new`, `/exit` or `!` shell line sent during a turn was kept and typed when the turn ended. It is refused again. Thanks @mikebenner (#491). ([18eb3e2](https://github.com/AltanS/collie/commit/18eb3e2))
 - **omp's box composer sends again with Nerd Font symbols and its own word hint.** A wrapped or two-line draft, an image chip, a slash or skill command, omp's grey word guess after the cursor and a send during a tool turn no longer end as typed but not sent. Thanks @christensenjames (#497). ([a66c570](https://github.com/AltanS/collie/commit/a66c570))
-
 ## [1.22.5] - 2026-10-17
 
 **Urgent.** Since 1.22.0 a pi pane with an extension footer refuses every send, and a Claude picker or Heads up notice can block taps.

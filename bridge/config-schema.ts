@@ -326,7 +326,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: DEFAULT_MUX,
-    doc: "Which multiplexer this collie mirrors: herdr, tern, tmux, zellij, tuios or durable.",
+    doc: "Which multiplexer this collie mirrors: herdr, tern, tmux, zellij, tuios or durable — or none, for a collie that fronts no multiplexer (a lead whose machines all dial in).",
     configField: "mux",
   },
   {

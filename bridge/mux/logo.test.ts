@@ -28,14 +28,30 @@ const LOGOS: readonly [name: string, svg: string][] = [
   ["durable", DURABLE_LOGO_SVG],
 ];
 
+/**
+ * The registered adapters that deliberately ship NO logo, each with its reason. The port makes an
+ * absent mark a real answer (types.ts `logo`: the header renders exactly the text it rendered
+ * before), but this file's whole job is that nothing lands unnoticed — so an adapter without a
+ * logo is listed here or the test fails, exactly as a forgotten logo file would.
+ */
+const LOGOLESS: ReadonlyMap<string, string> = new Map([
+  ["none", "an adapter that fronts no multiplexer has no mark to draw"],
+]);
+
 /** Roughly what a `<img>` in a header should ever cost. Not a limit anyone should need to raise. */
 const MAX_BYTES = 4096;
 
 describe("every mux logo is inert, standalone, and small", () => {
   test("one logo per registered adapter — a fourth adapter cannot land unnoticed", () => {
-    expect(LOGOS.map(([name]) => name).toSorted()).toEqual(
-      MUX_ADAPTERS.map((factory) => factory.mux).toSorted(),
-    );
+    const carried = LOGOS.map(([name]) => name).toSorted();
+    const expected = MUX_ADAPTERS.map((factory) => factory.mux)
+      .filter((name) => !LOGOLESS.has(name))
+      .toSorted();
+    expect(carried).toEqual(expected);
+    // And the allowlist itself stays honest: every entry names a real registered adapter.
+    for (const name of LOGOLESS.keys()) {
+      expect(MUX_ADAPTERS.some((factory) => factory.mux === name), `${name} is logoless here but not registered`).toBe(true);
+    }
   });
 
   for (const [name, svg] of LOGOS) {

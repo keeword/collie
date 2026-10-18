@@ -17,6 +17,12 @@
 #
 #   • **Prose.** A comment explaining that Herdr's `truncated` flag is always false is documentation
 #     of a real bridge, and deleting the word would delete the fact.
+#   • **The word `none`.** `COLLIE_MUX=none` registered an everyday English word as an adapter name,
+#     and a whole-content `"none"` is `fill="none"` on an SVG, `autoCapitalize="none"` on an input,
+#     `modal !== "none"` in the Surface grammar — none of them a multiplexer decision. Banning the
+#     word would flag a hundred innocent lines and catch nothing, so it is set aside where the names
+#     are derived, and a branch that really decides on no-multiplexer-ness is caught where it does
+#     its damage: by the capability block it should have read instead.
 #   • **Explanation text.** A sentence like "tmux keeps no agent session log for Collie to read" is
 #     the ADAPTER's own note, published on `/api/config` (bridge/types.ts `MuxConfig.notes`) and
 #     interpolated. It reaches the phone as data, so no literal appears here at all — which is the
@@ -42,6 +48,11 @@ cd "$root"
 # ── The names, from the adapters themselves ──────────────────────────────────
 names=$(grep -hoE '^export const [A-Z0-9_]+_MUX = "[a-z0-9-]+";' bridge/mux/*/adapter.ts \
   | sed -E 's/.*"([a-z0-9-]+)".*/\1/' | sort -u)
+
+# `none` is set aside BEFORE the emptiness check, not after: the derivation still finds it, but a
+# name list that bans nothing must refuse however it came to be empty. See the header's
+# deliberate-exceptions list for why the scans cannot have the word.
+names=$(echo "$names" | grep -vx 'none' || true)
 
 if [ -z "$names" ]; then
   echo "✗ check-mux-names: found no adapter names to ban." >&2

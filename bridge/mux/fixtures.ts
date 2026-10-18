@@ -37,6 +37,7 @@ import { ternMuxFactory } from "./tern/adapter.ts";
 import { FakeTern, ternConformanceFixture, ternWorld } from "./tern/fixture.ts";
 import { ternBeaconMatcher } from "./tern/markers.ts";
 import { tuiosConformanceFixture } from "./tuios/fixture.ts";
+import { noneConformanceFixture } from "./none/fixture.ts";
 import { zellijMuxFactory } from "./zellij/adapter.ts";
 import { FakeZellij, SESSION, zellijConformanceFixture, zellijWorld } from "./zellij/fixture.ts";
 import { zellijBeaconMatcher } from "./zellij/markers.ts";
@@ -158,6 +159,7 @@ export const MUX_CONFORMANCE_FIXTURES: readonly MuxConformanceFixture[] = [
   tuiosConformanceFixture,
   durableConformanceFixture,
   durableHttpConformanceFixture,
+  noneConformanceFixture,
   { mux: ternMuxFactory.mux, variant: "beacons, hooks installed", create: () => ternDecoratedWorld(true) },
   { mux: ternMuxFactory.mux, variant: "beacons, hooks absent", create: () => ternDecoratedWorld(false) },
   { mux: tmuxMuxFactory.mux, variant: "beacons, hooks installed", create: () => tmuxDecoratedWorld(true) },

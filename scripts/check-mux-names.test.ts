@@ -191,6 +191,20 @@ describe("check-mux-names — what is deliberately allowed", () => {
     expect(scan("thing.ts", src).code).toBe(0);
   });
 
+  // `none` is a registered name (COLLIE_MUX=none) and an everyday word; the header's
+  // deliberate-exceptions list says why the scans set it aside. These two negative controls pin
+  // that, so the exclusion cannot rot into a blanket permission on the other names.
+  test("the word none passes in the frontend — fill=\"none\" is an SVG, not a branch", () => {
+    expect(scan("icon.tsx", 'export const I = () => <svg fill="none">{null}</svg>;\n').code).toBe(0);
+  });
+
+  test("the word none passes above the seam — the Surface grammar's modal is not a mux", () => {
+    const src = 'export const open = (s: Snap) => s.modal !== "none";\n';
+    const { code, out } = scanBridge({ "surface.ts": src });
+    expect(out).toContain("no multiplexer name is compared");
+    expect(code).toBe(0);
+  });
+
   test("tests may fabricate a named multiplexer — that is how the behaviour above is asserted", () => {
     expect(scan("thing.test.ts", 'const cfg = { name: "tmux" };\n').code).toBe(0);
     expect(scan("thing.test.tsx", 'const cfg = { name: "zellij" };\n').code).toBe(0);

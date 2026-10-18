@@ -648,6 +648,21 @@ export interface MuxAdapter {
   readonly capabilities: MuxCapabilityDeclaration;
 
   /**
+   * This adapter fronts no terminals at all, and its empty census is HEALTH rather than a fault.
+   *
+   * A DECLARED FACT in the {@link MuxCapabilityDeclaration.spaces} family — not a capability,
+   * because no route degrades on it; the honest answer it replaces is "unreachable", which would
+   * paint a connected/disconnected banner over a collie whose whole job is to have no panes (a
+   * mux-less lead, ADR 0036's named end state). The conformance suite reads it: the floor check's
+   * "no panes — nothing to render" problem is for adapters that CAN render, and every pane-needing
+   * leg is vacuously honest for one that can never have a pane.
+   *
+   * ABSENT ON EVERY OTHER ADAPTER, including one whose multiplexer is merely down — a dead Herdr
+   * is a fault to surface, not a fact to declare.
+   */
+  readonly paneless?: true;
+
+  /**
    * This multiplexer's mark, as SVG source — the bytes served at `/api/mux/logo.svg`.
    *
    * SUPPLIED BY THE ADAPTER, exactly like {@link capabilities} and for the same reason: the phone
@@ -914,8 +929,14 @@ export interface MuxAdapter {
  * The field is OMITTED rather than set to `undefined` when the adapter has none, so
  * `"logo" in adapter` keeps answering the same question after wrapping as before it.
  */
-export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo"> {
-  return adapter.logo === undefined ? {} : { logo: adapter.logo };
+/** The mutable builder shape behind {@link muxDataFields} — the fields a decorator carries through. */
+type MutableMuxDataFields = { logo?: string; paneless?: true };
+
+export function muxDataFields(adapter: MuxAdapter): Pick<MuxAdapter, "logo" | "paneless"> {
+  const fields: MutableMuxDataFields = {};
+  if (adapter.logo !== undefined) fields.logo = adapter.logo;
+  if (adapter.paneless !== undefined) fields.paneless = adapter.paneless;
+  return fields;
 }
 
 /** The OPTIONAL methods a decorator carries through, each only when the adapter has it. */
