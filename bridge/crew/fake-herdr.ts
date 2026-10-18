@@ -37,7 +37,11 @@ export interface FakeHerdr {
   stop(): void;
 }
 
-const AGENT_STATUS = { state: "idle", label: "idle" };
+// `agent_status` is one word on the wire (`HERDR_API.md`: idle | working | blocked | done | unknown),
+// and it must be one word here too: the row crosses a crew link as a pane row, and the lead's parse
+// drops a pane whose `status` is not one of those words (crew/merge.ts `isPaneWire`). An object
+// here once slipped through the member's own snapshot unasserted and was dropped at the lead.
+const AGENT_STATUS = "idle";
 
 /** One `pane.send_text` / `pane.send_keys` / `pane.rename` the fake received — the write evidence. */
 export type PaneWrite = { method: string; params: JsonObject };

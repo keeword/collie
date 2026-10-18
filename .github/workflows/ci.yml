@@ -78,7 +78,7 @@ jobs:
       - name: Test (web, shard ${{ matrix.shard }}/3)
         run: cd web && bunx vitest run --shard=${{ matrix.shard }}/3
 
-  # The two-instance crew drill (integration/crew-harness.test.ts). ITS OWN JOB, and no `needs`, for
+  # The crew drills (integration/). ITS OWN JOB, and no `needs`, for
   # the same two reasons the browser tier has one. It is slow for a reason nothing can trim: it boots
   # twenty real child processes over real pinned TLS, because a certificate cannot be re-pinned on a
   # reload. Measured 2026-09-30, it was 58.3s of the 67.0s `check` spent on the backend, paid by every
